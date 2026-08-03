@@ -1,0 +1,151 @@
+/* app.wxss - 全局样式与设计令牌
+   风格：清新校园 · 明亮杂志感
+   暖纸底 + 墨蓝字 + 钴蓝主色 + 多彩课程分类 */
+
+page {
+  background: #f6f3ec;
+  color: #20253a;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+view, text, button, input { box-sizing: border-box; }
+
+.page {
+  min-height: 100vh;
+  padding: 28rpx 28rpx calc(48rpx + env(safe-area-inset-bottom));
+}
+
+/* ---------- 刊头（杂志报头） ---------- */
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  color: #8f8570;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+}
+.kicker::before {
+  content: "";
+  width: 36rpx;
+  height: 4rpx;
+  background: #f0a02e;
+  border-radius: 2rpx;
+}
+.masthead-title {
+  margin-top: 10rpx;
+  font-size: 56rpx;
+  font-weight: 900;
+  letter-spacing: 2rpx;
+  color: #20253a;
+  line-height: 1.15;
+}
+.masthead-sub { margin-top: 8rpx; color: #7b7362; font-size: 24rpx; }
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: #fffefa;
+  border: 1rpx solid #e9e4d7;
+  border-radius: 28rpx;
+  padding: 30rpx;
+  box-shadow: 0 10rpx 32rpx rgba(50, 46, 30, 0.05);
+}
+
+/* ---------- 按钮 ---------- */
+.btn-primary {
+  background: #3a5bd9;
+  color: #fff;
+  border-radius: 18rpx;
+  font-weight: 800;
+  font-size: 30rpx;
+  letter-spacing: 2rpx;
+  border: none;
+  box-shadow: 0 10rpx 24rpx rgba(58, 91, 217, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.btn-primary.button-hover {
+  background: #2f4dc4;
+  transform: scale(0.98);
+  box-shadow: 0 4rpx 12rpx rgba(58, 91, 217, 0.22);
+}
+.btn-primary[disabled] {
+  background: #eef0f4;
+  color: #a2a8b8;
+  box-shadow: none;
+}
+.btn-ghost {
+  background: #fffefa;
+  color: #3a5bd9;
+  border: 2rpx solid #c4d0f2;
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+.btn-ghost.button-hover { background: #eef2fd; transform: scale(0.98); }
+.btn-danger {
+  background: #fae9e3;
+  color: #c14a30;
+  border: 1rpx solid #f0d0c4;
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  transition: transform 0.15s ease;
+}
+.btn-danger.button-hover { transform: scale(0.96); }
+
+/* ---------- 角标 ---------- */
+.badge {
+  display: inline-block;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  background: #e9eefc;
+  color: #3a5bd9;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+}
+
+/* ---------- 节标题 ---------- */
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin: 40rpx 0 22rpx;
+}
+.section-title h3,
+.section-title .h3 {
+  display: block;
+  font-size: 38rpx;
+  margin: 0;
+  font-weight: 900;
+  color: #20253a;
+  letter-spacing: 1rpx;
+}
+.section-title .sub {
+  display: block;
+  color: #9a927e;
+  font-size: 22rpx;
+  margin-top: 8rpx;
+}
+
+/* ---------- 空态 ---------- */
+.empty {
+  padding: 90rpx 48rpx;
+  text-align: center;
+  color: #9a927e;
+  font-size: 26rpx;
+  line-height: 1.9;
+  border: 2rpx dashed #ddd5c2;
+  border-radius: 28rpx;
+  background: #fbf9f2;
+}
+
+/* ---------- 课程分类色板 ---------- */
+.tone-mint   { background: #dff2e2; color: #227a44; }
+.tone-blue   { background: #e3ebff; color: #2f4fc4; }
+.tone-amber  { background: #fbeed1; color: #996700; }
+.tone-violet { background: #ede6fb; color: #6a4bb8; }
+.tone-coral  { background: #fae3db; color: #b04a2c; }
+.tone-navy   { background: #e0eaf3; color: #2e5a80; }

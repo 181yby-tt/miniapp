@@ -1,0 +1,42 @@
+<view class="page">
+  <view class="section-title">
+    <view><h3>我的课表</h3><view class="sub">已选 {{courseCount}} 门课程</view></view>
+    <view class="seg" wx:if="{{courseCount > 0}}">
+      <view class="seg-item {{view === 'grid' ? 'active' : ''}}" bindtap="switchView" data-view="grid">课表</view>
+      <view class="seg-item {{view === 'list' ? 'active' : ''}}" bindtap="switchView" data-view="list">列表</view>
+    </view>
+  </view>
+
+  <view wx:if="{{courseCount === 0}}" class="empty">还没有报名课程，课表会在报名后自动生成</view>
+
+  <scroll-view wx:elif="{{view === 'grid'}}" scroll-x class="tbl-wrap">
+    <view class="tbl">
+      <view class="row head">
+        <view class="cell corner">节</view>
+        <view class="cell" wx:for="{{week}}" wx:key="*this">{{item}}</view>
+      </view>
+      <view class="row" wx:for="{{cells}}" wx:for-item="row" wx:key="index">
+        <view class="cell period">{{periods[index]}}</view>
+        <view
+          class="cell {{cell ? 'tone-' + cell.tone : ''}}"
+          wx:for="{{row}}" wx:for-item="cell" wx:key="index"
+          bindtap="tapCell" data-id="{{cell ? cell.course_id : ''}}">
+          <block wx:if="{{cell}}">
+            <text class="c-name">{{cell.name}}</text>
+            <text class="c-venue">{{cell.venue}}</text>
+          </block>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:else class="list-view">
+    <view class="list-item tone-{{item.tone}}" wx:for="{{listItems}}" wx:key="course_id" bindtap="tapCell" data-id="{{item.course_id}}">
+      <view class="li-when"><text class="li-day">{{item.weekdayText}}</text><text class="li-period">第 {{item.period}} 节</text></view>
+      <view class="li-main">
+        <text class="li-name">{{item.name}}</text>
+        <text class="li-meta">{{item.teacher}} · {{item.venue}}</text>
+      </view>
+    </view>
+  </view>
+</view>

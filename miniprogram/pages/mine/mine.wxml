@@ -1,0 +1,45 @@
+<view class="page">
+  <view class="masthead">
+    <view class="kicker">我的报名</view>
+    <view class="masthead-title">我的课程</view>
+  </view>
+
+  <view class="statstrip card">
+    <view class="ss-item">
+      <view class="ss-num">{{items.length}}<text class="ss-total"> / {{maxActive}}</text></view>
+      <view class="ss-label">已选课程</view>
+    </view>
+    <view class="ss-divider"></view>
+    <view class="ss-item">
+      <view class="ss-num {{remainingSlots > 0 ? '' : 'ss-zero'}}">{{remainingSlots}}</view>
+      <view class="ss-label">可再选</view>
+    </view>
+  </view>
+
+  <view class="section-title">
+    <view><text class="h3">已报名</text><text class="sub">点按进入详情，可在此退课</text></view>
+  </view>
+
+  <view wx:if="{{items.length === 0}}" class="empty">还没有报名任何课程～\n去「课程」里挑一门感兴趣的吧</view>
+
+  <view class="course-list">
+    <view wx:for="{{items}}" wx:key="id" class="enr-card card" bindtap="goDetail" data-id="{{item.id}}" hover-class="card-hover">
+      <view class="ec-left tone-{{item.tone}}">{{item.mark}}</view>
+      <view class="ec-main">
+        <view class="ec-name">{{item.name}}</view>
+        <view class="ec-meta">{{item.teacherText}} · {{item.timeText}}</view>
+        <view class="ec-meta">{{item.venueText}}</view>
+      </view>
+      <button class="btn-danger ec-btn" catchtap="onWithdraw" data-id="{{item.id}}">退课</button>
+    </view>
+  </view>
+
+  <view wx:if="{{history.length > 0}}" class="section-title">
+    <view><text class="h3">历史记录</text><text class="sub">退课 / 取消记录</text></view>
+  </view>
+  <view wx:for="{{history}}" wx:key="course_id" class="his-row card">
+    <text class="his-name">{{item.name}}</text>
+    <text class="his-tag {{item.status === 'WITHDRAWN' ? 't-gray' : 't-amber'}}">{{item.status === 'WITHDRAWN' ? '已退课' : '已取消'}}</text>
+    <text class="his-time" wx:if="{{item.cancelled_at}}">{{item.cancelled_at}}</text>
+  </view>
+</view>

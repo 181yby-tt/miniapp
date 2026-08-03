@@ -1,0 +1,54 @@
+<view class="page">
+  <!-- 杂志刊头 -->
+  <view class="masthead">
+    <view class="kicker">铁英中学 · 校本选修</view>
+    <view class="masthead-title">课程大厅</view>
+    <view class="masthead-sub">报名成功后才会占用名额 · 余位实时更新</view>
+  </view>
+
+  <!-- 索引式统计条 -->
+  <view class="statstrip card">
+    <view class="ss-item">
+      <view class="ss-num">{{selectedCount}}<text class="ss-total"> / {{maxCount}}</text></view>
+      <view class="ss-label">我的课程</view>
+    </view>
+    <view class="ss-divider"></view>
+    <view class="ss-item">
+      <view class="ss-num">{{openCount}}</view>
+      <view class="ss-label">开放课程</view>
+    </view>
+    <view class="ss-divider"></view>
+    <view class="ss-item">
+      <view class="ss-num ss-tag">全年</view>
+      <view class="ss-label">开放周期</view>
+    </view>
+  </view>
+
+  <view class="section-title">
+    <view><text class="h3">发现课程</text><text class="sub">点按卡片查看详情</text></view>
+    <text class="badge">实时余位</text>
+  </view>
+
+  <view class="filters">
+    <view class="search-wrap">
+      <input class="search" placeholder="搜索课程或老师" value="{{search}}" bindinput="onSearch" placeholder-class="ph" confirm-type="search" bindconfirm="reload" />
+    </view>
+  </view>
+  <scroll-view scroll-x="true" class="chips" wx:if="{{categories.length}}" enhanced show-scrollbar="{{false}}">
+    <view class="chip {{selectedCategory === '' ? 'active' : ''}}" bindtap="onCat" data-cat="">全部</view>
+    <view class="chip {{selectedCategory === item ? 'active' : ''}}" wx:for="{{categories}}" wx:key="*this" bindtap="onCat" data-cat="{{item}}">{{item}}</view>
+    <view class="chip toggle {{onlyAvailable ? 'active' : ''}}" bindtap="onToggleAvailable">仅看有余位</view>
+  </scroll-view>
+
+  <view class="course-list">
+    <course-card
+      wx:for="{{courses}}"
+      wx:key="id"
+      course="{{item}}"
+      enrolled="{{item.enrolled}}"
+      bind:select="onSelect"
+      bind:enroll="onEnroll"
+    />
+    <view class="empty" wx:if="{{!loading && courses.length === 0}}">没有找到符合条件的课程，\n换个关键词或分类试试。</view>
+  </view>
+</view>

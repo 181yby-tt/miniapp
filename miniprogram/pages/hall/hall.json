@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "课程大厅",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "course-card": "/components/course-card/course-card"
+  }
+}

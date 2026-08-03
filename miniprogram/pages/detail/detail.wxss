@@ -1,0 +1,92 @@
+/* 课程详情 · 杂志封面 */
+
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
+  padding: 44rpx 36rpx;
+  border-radius: 32rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(0, 0, 0, 0.03);
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  right: -60rpx;
+  top: -60rpx;
+  width: 220rpx;
+  height: 220rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+.hero-mark {
+  width: 132rpx;
+  height: 132rpx;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 30rpx;
+  background: rgba(255, 255, 255, 0.6);
+  font-weight: 900;
+  font-size: 56rpx;
+  box-shadow: 0 10rpx 24rpx rgba(50, 46, 30, 0.1);
+}
+.hero-info { min-width: 0; position: relative; z-index: 1; }
+.hero-cat { font-size: 23rpx; font-weight: 700; letter-spacing: 4rpx; opacity: 0.75; }
+.hero-name {
+  display: block;
+  font-size: 46rpx;
+  font-weight: 900;
+  margin: 8rpx 0 18rpx;
+  letter-spacing: 2rpx;
+  line-height: 1.2;
+}
+.hero-status .badge { background: rgba(255, 255, 255, 0.75); }
+.hero-status .badge.ok { background: rgba(255, 255, 255, 0.75); color: #227a44; }
+.hero-status .badge.amber { background: rgba(255, 255, 255, 0.75); color: #996700; }
+.hero-status .badge.gray { background: rgba(255, 255, 255, 0.6); color: #6b7280; }
+
+/* 索引式信息行（点线引导） */
+.info { margin-top: 24rpx; }
+.info-row {
+  display: flex;
+  align-items: baseline;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f1ecdf;
+}
+.info-row:last-child { border-bottom: none; }
+.info-row .k { color: #9a927e; font-size: 26rpx; flex: none; letter-spacing: 2rpx; }
+.info-row .dots {
+  flex: 1;
+  margin: 0 18rpx;
+  border-bottom: 2rpx dotted #d8d2c0;
+  transform: translateY(-8rpx);
+}
+.info-row .v { font-size: 28rpx; font-weight: 700; color: #20253a; flex: none; }
+.info-row .v.ok { color: #227a44; font-weight: 900; }
+.info-row .v.bad { color: #c14a30; font-weight: 900; }
+
+.info-title { font-size: 32rpx; font-weight: 900; margin-bottom: 18rpx; letter-spacing: 1rpx; }
+.desc { color: #6b6353; font-size: 27rpx; line-height: 1.85; }
+
+.alert {
+  background: #fae9e3;
+  border: 1rpx solid #f0d0c4;
+  color: #b04428;
+  font-size: 26rpx;
+  line-height: 1.65;
+  padding: 24rpx 28rpx;
+}
+
+.action-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 22rpx 28rpx calc(22rpx + env(safe-area-inset-bottom));
+  background: rgba(246, 243, 236, 0.94);
+  border-top: 1rpx solid #e9e4d7;
+}
+.action { width: 100%; height: 96rpx; line-height: 96rpx; font-size: 32rpx; }

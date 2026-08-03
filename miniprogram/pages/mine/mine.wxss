@@ -1,0 +1,71 @@
+/* 我的课程 */
+
+/* 索引式统计条（与课程大厅同款） */
+.statstrip {
+  display: flex;
+  align-items: center;
+  margin-top: 30rpx;
+  padding: 28rpx 12rpx;
+}
+.ss-item { flex: 1; text-align: center; }
+.ss-num {
+  font-size: 46rpx;
+  font-weight: 900;
+  color: #3a5bd9;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.ss-num .ss-total { font-size: 26rpx; font-weight: 700; color: #a3a8bb; }
+.ss-num.ss-zero { color: #c14a30; }
+.ss-label { margin-top: 8rpx; color: #9a927e; font-size: 22rpx; letter-spacing: 2rpx; }
+.ss-divider { width: 1rpx; height: 64rpx; background: #e9e4d7; }
+
+.course-list { display: flex; flex-direction: column; gap: 18rpx; }
+
+.enr-card {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.enr-card.card-hover {
+  transform: translateY(-4rpx);
+  box-shadow: 0 16rpx 36rpx rgba(50, 46, 30, 0.1);
+}
+.ec-left {
+  width: 92rpx;
+  height: 92rpx;
+  border-radius: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  font-weight: 900;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 2rpx rgba(255, 255, 255, 0.55);
+}
+.ec-main { flex: 1; min-width: 0; }
+.ec-name { font-size: 31rpx; font-weight: 800; color: #20253a; letter-spacing: 1rpx; }
+.ec-meta {
+  font-size: 23rpx;
+  color: #9a927e;
+  margin-top: 8rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ec-btn { flex-shrink: 0; margin: 0; padding: 0 24rpx; height: 62rpx; line-height: 60rpx; }
+
+/* 历史记录 */
+.his-row {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 24rpx 28rpx;
+  margin-bottom: 14rpx;
+}
+.his-name { font-size: 27rpx; color: #4a5068; flex: 1; font-weight: 600; }
+.his-tag { font-size: 21rpx; padding: 6rpx 16rpx; border-radius: 999rpx; font-weight: 700; }
+.t-gray { background: #efead9; color: #8f8570; }
+.t-amber { background: #fbeed1; color: #996700; }
+.his-time { font-size: 21rpx; color: #b3ad9d; }

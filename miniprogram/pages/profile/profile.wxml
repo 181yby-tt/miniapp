@@ -1,0 +1,25 @@
+<view class="page">
+  <view class="hero" wx:if="{{profile}}">
+    <view class="avatar">{{profile.avatar}}</view>
+    <view class="hero-main">
+      <view class="name">{{profile.name}}</view>
+      <view class="uid">学号 {{profile.student_no}}</view>
+    </view>
+    <view class="hero-deco">✳</view>
+  </view>
+
+  <view class="card info" wx:if="{{profile}}">
+    <view class="info-row"><text class="k">年级</text><view class="dots"></view><text class="v">{{profile.grade}}</text></view>
+    <view class="info-row"><text class="k">班级</text><view class="dots"></view><text class="v">{{profile.class_name}}</text></view>
+    <view class="info-row"><text class="k">登录账号</text><view class="dots"></view><text class="v">{{profile.username}}</text></view>
+  </view>
+
+  <view class="menu card">
+    <view class="menu-item" bindtap="goChangePwd" hover-class="mi-hover">
+      <text class="mi-label">修改密码</text>
+      <text class="arrow">›</text>
+    </view>
+  </view>
+
+  <button class="btn-ghost logout" bindtap="onLogout">退出登录</button>
+</view>

@@ -1,0 +1,95 @@
+/* 登录 · 杂志报头 */
+
+.login {
+  min-height: 100vh;
+  padding: 110rpx 56rpx 80rpx;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(240, 160, 46, 0.22), transparent 32%),
+    radial-gradient(circle at 8% 30%, rgba(122, 149, 236, 0.16), transparent 36%),
+    linear-gradient(180deg, #20253a 0 40%, #f6f3ec 40%);
+}
+.login-school {
+  color: rgba(246, 243, 236, 0.6);
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 6rpx;
+}
+.login-rule {
+  margin-top: 18rpx;
+  height: 3rpx;
+  width: 64rpx;
+  background: #f0a02e;
+  border-radius: 2rpx;
+}
+.login-logo {
+  width: 112rpx;
+  height: 112rpx;
+  margin-top: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 28rpx;
+  background: #3a5bd9;
+  color: #fff;
+  font-size: 50rpx;
+  font-weight: 900;
+  box-shadow: 0 18rpx 44rpx rgba(58, 91, 217, 0.4);
+}
+.login-title {
+  margin: 32rpx 0 10rpx;
+  color: #f6f3ec;
+  font-size: 58rpx;
+  font-weight: 900;
+  letter-spacing: 4rpx;
+}
+.login-sub { margin: 0; color: rgba(246, 243, 236, 0.55); font-size: 26rpx; }
+
+.login-form {
+  margin-top: 60rpx;
+  padding: 48rpx 42rpx;
+  background: #fffefa;
+  border: 1rpx solid #e9e4d7;
+  border-radius: 36rpx;
+  box-shadow: 0 28rpx 64rpx rgba(32, 37, 58, 0.18);
+}
+.field { display: block; margin-bottom: 32rpx; }
+.label {
+  display: block;
+  color: #6b6353;
+  font-size: 23rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+  margin-bottom: 16rpx;
+}
+.input {
+  width: 100%;
+  height: 94rpx;
+  padding: 0 28rpx;
+  border: 1rpx solid #e3ddcd;
+  border-radius: 20rpx;
+  background: #fbf9f2;
+  color: #20253a;
+  font-size: 30rpx;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.ph { color: #b3ad9d; }
+.login-tip-row { color: #9a927e; font-size: 22rpx; margin-bottom: 28rpx; }
+.submit { width: 100%; height: 94rpx; line-height: 94rpx; margin-top: 8rpx; }
+.login-note {
+  margin-top: 26rpx;
+  padding: 22rpx 26rpx;
+  border-radius: 18rpx;
+  background: #f4f1e6;
+  color: #8f8570;
+  font-size: 22rpx;
+  line-height: 1.65;
+}
+.bind-banner {
+  margin: 30rpx 0 0;
+  padding: 20rpx 26rpx;
+  background: rgba(58, 91, 217, 0.16);
+  color: #aebcf0;
+  border-radius: 16rpx;
+  font-size: 24rpx;
+  text-align: center;
+}

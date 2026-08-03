@@ -1,0 +1,35 @@
+<view class="page detail" wx:if="{{course.id}}">
+  <!-- 杂志封面式 Hero -->
+  <view class="hero tone-{{tone}}">
+    <view class="hero-mark">{{mark}}</view>
+    <view class="hero-info">
+      <text class="hero-cat">{{course.category}}</text>
+      <text class="hero-name">{{course.name}}</text>
+      <view class="hero-status"><text class="badge {{statusClass}}">{{statusText}}</text></view>
+    </view>
+  </view>
+
+  <!-- 索引式信息（点线引导） -->
+  <view class="card info">
+    <view class="info-row"><text class="k">负责老师</text><view class="dots"></view><text class="v">{{teacherText}}</text></view>
+    <view class="info-row"><text class="k">上课时间</text><view class="dots"></view><text class="v">{{timeText}}</text></view>
+    <view class="info-row"><text class="k">上课场地</text><view class="dots"></view><text class="v">{{venueText}}</text></view>
+    <view class="info-row"><text class="k">课程容量</text><view class="dots"></view><text class="v">{{course.capacity}} 人</text></view>
+    <view class="info-row"><text class="k">剩余名额</text><view class="dots"></view><text class="v {{course.remaining > 0 ? 'ok' : 'bad'}}">{{course.remaining}} 人</text></view>
+  </view>
+
+  <view class="card">
+    <view class="info-title">课程简介</view>
+    <view class="desc">{{course.description || '暂无简介'}}</view>
+  </view>
+
+  <view wx:if="{{reason}}" class="card alert">{{reason}}</view>
+
+  <view style="height:180rpx"></view>
+  <view class="action-bar">
+    <button wx:if="{{action === 'enrolled'}}" class="btn-danger action" bindtap="onWithdraw">退课</button>
+    <button wx:elif="{{action === 'can_enroll'}}" class="btn-primary action" loading="{{loading}}" bindtap="onEnroll">报名（余 {{course.remaining}}）</button>
+    <button wx:else class="btn-primary action" disabled="true">{{actionText}}</button>
+  </view>
+</view>
+<view wx:else class="page"><view class="empty">加载中…</view></view>

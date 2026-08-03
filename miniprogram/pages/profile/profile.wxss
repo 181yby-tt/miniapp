@@ -1,0 +1,82 @@
+/* 我的 · 个人资料 */
+
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 26rpx;
+  padding: 40rpx 34rpx;
+  border-radius: 32rpx;
+  background: #20253a;
+  color: #f6f3ec;
+  overflow: hidden;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  right: -70rpx;
+  bottom: -90rpx;
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 50%;
+  background: rgba(240, 160, 46, 0.16);
+}
+.avatar {
+  width: 108rpx;
+  height: 108rpx;
+  border-radius: 26rpx;
+  background: #3a5bd9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+  font-weight: 900;
+  flex-shrink: 0;
+  box-shadow: 0 10rpx 24rpx rgba(0, 0, 0, 0.25);
+  position: relative;
+  z-index: 1;
+}
+.hero-main { display: flex; flex-direction: column; gap: 10rpx; position: relative; z-index: 1; }
+.name { font-size: 40rpx; font-weight: 900; letter-spacing: 2rpx; }
+.uid { font-size: 23rpx; color: rgba(246, 243, 236, 0.6); letter-spacing: 1rpx; }
+.hero-deco {
+  position: absolute;
+  right: 30rpx;
+  top: 24rpx;
+  color: #f0a02e;
+  font-size: 44rpx;
+  z-index: 1;
+}
+
+/* 索引式信息行 */
+.info { padding: 10rpx 30rpx; }
+.info-row {
+  display: flex;
+  align-items: baseline;
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid #f1ecdf;
+}
+.info-row:last-child { border-bottom: none; }
+.info-row .k { color: #9a927e; font-size: 26rpx; flex: none; letter-spacing: 2rpx; }
+.info-row .dots {
+  flex: 1;
+  margin: 0 18rpx;
+  border-bottom: 2rpx dotted #d8d2c0;
+  transform: translateY(-8rpx);
+}
+.info-row .v { color: #20253a; font-size: 28rpx; font-weight: 700; flex: none; }
+
+/* 菜单 */
+.menu { padding: 8rpx 30rpx; }
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx 0;
+  transition: opacity 0.15s ease;
+}
+.menu-item.mi-hover { opacity: 0.55; }
+.mi-label { font-size: 29rpx; color: #20253a; font-weight: 700; letter-spacing: 1rpx; }
+.arrow { font-size: 40rpx; color: #b3ad9d; }
+
+.logout { margin-top: 40rpx; }

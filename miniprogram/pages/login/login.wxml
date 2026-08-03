@@ -1,0 +1,25 @@
+<view class="login">
+  <view class="login-school">铁英中学 · 校本选课平台</view>
+  <view class="login-rule"></view>
+  <view class="login-logo">课</view>
+  <view class="login-title">欢迎回来</view>
+  <view class="login-sub">{{ isWechatBind ? '已识别你的微信，请绑定学号完成首次登录' : '使用学校统一发放的学生账号登录' }}</view>
+
+  <view wx:if="{{isWechatBind}}" class="bind-banner">微信一键登录 · 首次使用需绑定学号</view>
+
+  <view class="login-form">
+    <view class="field">
+      <text class="label">学生账号</text>
+      <input class="input" value="{{username}}" bindinput="onUser" placeholder="请输入学号" placeholder-class="ph" />
+    </view>
+    <view class="field">
+      <text class="label">密码</text>
+      <input class="input" value="{{password}}" password bindinput="onPwd" placeholder="请输入密码" placeholder-class="ph" />
+    </view>
+    <view class="login-tip-row">
+      <text>首次登录需修改初始密码</text>
+    </view>
+    <button class="btn-primary submit" loading="{{loading}}" bindtap="onLogin">登录并进入选课</button>
+    <view class="login-note">账号由学校后台按学生名单统一生成，不支持自行注册。</view>
+  </view>
+</view>
