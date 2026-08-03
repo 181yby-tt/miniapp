@@ -7,7 +7,8 @@
 
 const crypto = require('crypto');
 
-const TOKEN_SECRET = process.env.TOKEN_SECRET || 'kexu-dev-secret-change-in-prod';
+// 令牌签名密钥：务必通过环境变量 TOKEN_SECRET 注入，切勿硬编码（默认空串仅用于本地未配置时的显式失败）。
+const TOKEN_SECRET = process.env.TOKEN_SECRET || '';
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');

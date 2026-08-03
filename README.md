@@ -7,8 +7,8 @@
 > 教务管理后台（Web）已包含在 `admin-console.html`（单文件 SPA，直接对接真实后端）。
 > 学生端已接入**真实微信登录**：`wx.login` → 后端 `code2Session` 换 `openid` → 首次绑定学号 → 之后一键登录。
 
-**AppID**：`wxe660278769911dc3`（已写入 `miniprogram/project.config.json`）。
-**AppSecret**：`74a77f27c5f66b9153851a45055c7ad1`（仅服务端 `server/src/config.js`，切勿进前端/公开仓库）。
+**AppID**：通过环境变量 `APPID` 注入（见 `server/.env.example`）；`miniprogram/project.config.json` 中已置为 `touristappid` 占位，导入开发者工具后请替换为你自己的 AppID。
+**AppSecret**：**仅服务端**通过环境变量 `APPSECRET` 注入（`server/src/config.js` 读取），**绝不**进入前端代码或公开仓库。
 
 详见 **[上线与测试指南](docs/上线与测试指南.md)**。
 
