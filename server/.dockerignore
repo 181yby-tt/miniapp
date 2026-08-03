@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+# 不把演示数据打进镜像：容器启动时会自动重新种子，保证实例干净
+data.json
+data.json.*
+*.bak
+# 测试与工具不进生产镜像
+test*.js
+smoke_mp.js
+tools
+.git
+.gitignore
+Dockerfile
+.dockerignore

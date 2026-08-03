@@ -1,0 +1,34 @@
+# ===== 依赖 / 构建产物 =====
+node_modules/
+server/node_modules/
+
+# ===== 敏感运行时数据（含学生账号 / 密码哈希，绝不入库）=====
+server/data.json
+server/data.json.bak
+server/data.json.bak.*
+*.bak
+
+# ===== 真实环境变量（仅 .env.example 入库）=====
+.env
+
+# ===== 本地私有配置 =====
+miniprogram/project.private.config.json
+
+# ===== 工作区技能 / 本地缓存（含本地路径，不共享）=====
+.workbuddy/
+miniprogram/.workbuddy/
+miniprogram/dist/
+
+# ===== 早期开发 / 测试脚本（非业务代码）=====
+server/smoke_mp.js
+server/test.js
+server/test_admin.js
+server/test_elig.js
+server/test_wechat.js
+
+# ===== 系统 / 日志 =====
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

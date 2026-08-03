@@ -1,0 +1,19 @@
+{
+  "name": "kexu-server",
+  "version": "1.0.0",
+  "description": "课序 选课排课系统后端（文件模式 / MySQL 双持久化，详见 docs/schema.sql 与 docs/云托管部署指南.md）",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "reset": "node -e \"require('fs').existsSync('data.json')&&require('fs').unlinkSync('data.json');console.log('已删除本地 data.json（MySQL 模式下下次启动会重新种子）')\"",
+    "reset-db": "node tools/reset.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "mysql2": "^3.23.2"
+  }
+}

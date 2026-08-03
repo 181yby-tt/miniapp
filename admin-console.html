@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>课序 · 教务管理后台</title>
+<style>
+  :root{
+    --brand:#3a5bd9; --brand-d:#2c46b0; --brand-l:#e9eefc;
+    --ink:#20253a; --ink-2:#4a5068;
+    --bg:#f6f3ec; --card:#fffefa; --paper-2:#fbf9f2; --paper-3:#f4f1e6;
+    --line:#e9e4d7; --line-d:#ddd5c2;
+    --text:#20253a; --muted:#9a927e; --muted-l:#b3ad9d;
+    --danger:#c14a30; --danger-l:#fae9e3;
+    --warn:#f0a02e; --warn-d:#996700; --warn-l:#fbeed1;
+    --ok:#227a44; --ok-l:#dff2e2;
+    --blue:#2f4fc4; --blue-l:#e3ebff;
+    --amber:#f0a02e;
+    --shadow:0 10px 32px rgba(50,46,30,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+  button{font-family:inherit;cursor:pointer}
+  .hidden{display:none!important}
+
+  /* ---------- 登录 ---------- */
+  #loginPage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
+    radial-gradient(circle at 85% 12%, rgba(240,160,46,.25), transparent 34%),
+    radial-gradient(circle at 10% 30%, rgba(122,149,236,.18), transparent 38%),
+    linear-gradient(180deg,#20253a 0 46%, #f6f3ec 46%)}
+  .login-card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:42px 40px;width:372px;box-shadow:0 28px 70px rgba(32,37,58,.28)}
+  .login-kicker{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11.5px;font-weight:700;letter-spacing:3px;margin-bottom:18px}
+  .login-kicker::before{content:"";width:26px;height:3px;background:var(--amber);border-radius:2px}
+  .login-card h1{margin:0 0 4px;font-size:27px;font-weight:900;letter-spacing:2px;display:flex;align-items:center;gap:12px;color:var(--ink)}
+  .logo{width:40px;height:40px;border-radius:12px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:21px;box-shadow:0 10px 22px rgba(58,91,217,.35)}
+  .login-sub{color:var(--muted);margin:0 0 26px;font-size:13px}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12.5px;font-weight:700;letter-spacing:1px;color:var(--ink-2);margin-bottom:7px}
+  .field input,.field select,.field textarea{width:100%;padding:11px 12px;border:1px solid var(--line-d);border-radius:10px;font-size:14px;background:var(--paper-2);color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(58,91,217,.12)}
+  .btn{width:100%;padding:12px;border:none;border-radius:11px;background:var(--brand);color:#fff;font-size:15px;font-weight:800;letter-spacing:1px;box-shadow:0 8px 20px rgba(58,91,217,.26);transition:.15s}
+  .btn:hover{background:var(--brand-d);transform:translateY(-1px)}
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn.sm{padding:7px 14px;font-size:13px;width:auto;border-radius:9px}
+  .btn.ghost{background:var(--card);color:var(--brand);border:1.5px solid #c4d0f2;box-shadow:none}
+  .btn.ghost:hover{background:var(--brand-l)}
+  .btn.danger{background:var(--danger)}
+  .btn.danger:hover{background:#a83c26}
+  .btn.warn{background:var(--warn);color:var(--ink)}
+  .login-tip{margin-top:18px;font-size:12px;color:var(--muted);text-align:center;background:var(--paper-3);padding:9px;border-radius:10px}
+
+  /* ---------- 布局 ---------- */
+  #adminApp{display:flex;height:100vh}
+  .sidebar{width:212px;background:var(--ink);color:#c9cede;display:flex;flex-direction:column;flex-shrink:0}
+  .side-brand{padding:20px 18px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .side-brand .logo{box-shadow:0 8px 18px rgba(0,0,0,.35)}
+  .side-brand b{color:#f6f3ec;font-size:17px;font-weight:900;letter-spacing:2px}
+  .side-brand span{font-size:11px;color:#8a90a8;display:block;letter-spacing:1px}
+  .nav{padding:14px 10px;flex:1}
+  .nav button{width:100%;text-align:left;padding:11px 13px;margin-bottom:4px;border:none;background:transparent;color:#c9cede;border-radius:10px;font-size:14px;display:flex;align-items:center;gap:10px;transition:.15s}
+  .nav button:hover{background:rgba(122,149,236,.14)}
+  .nav button.active{background:var(--brand);color:#fff;font-weight:800;box-shadow:0 6px 16px rgba(58,91,217,.4)}
+  .nav .icon{width:20px;text-align:center;font-size:15px}
+  .side-foot{padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:#8a90a8}
+  .side-foot b{color:#eef0f8;display:block;font-size:13px}
+  .side-foot a{color:#8fa3ec;cursor:pointer}
+
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .topbar{padding:18px 28px;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .topbar h2{margin:0;font-size:21px;font-weight:900;letter-spacing:1px;color:var(--ink)}
+  .topbar h2::before{content:"";display:inline-block;width:6px;height:20px;background:var(--amber);border-radius:3px;margin-right:11px;vertical-align:-3px}
+  .topbar .sub{color:var(--muted);font-size:12px;margin-top:3px}
+  .content{padding:26px 28px;overflow:auto;flex:1}
+  .page{display:none}
+  .page.active{display:block}
+
+  /* ---------- 卡片/表格 ---------- */
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:14px;margin-bottom:22px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .stat .n{font-size:28px;font-weight:900;color:var(--brand);font-variant-numeric:tabular-nums}
+  .stat .l{color:var(--muted);font-size:12.5px;margin-top:3px;letter-spacing:1px}
+  .stat.warn .n{color:var(--warn-d)}
+  .stat.alert .n{color:var(--danger)}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:20px}
+  .panel h3{margin:0 0 14px;font-size:16px;font-weight:900;letter-spacing:1px;color:var(--ink)}
+  .panel .desc{color:var(--muted);font-size:12.5px;margin:-8px 0 14px}
+
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .toolbar .grow{flex:1}
+  .search{position:relative}
+  .search input{padding-left:32px;background:var(--card);border-color:var(--line-d)!important;border-radius:9px}
+  .search input:focus{outline:none;border-color:var(--brand)!important;box-shadow:0 0 0 3px rgba(58,91,217,.12)}
+  .search svg{position:absolute;left:9px;top:11px;opacity:.4}
+
+  table{width:100%;border-collapse:collapse}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  table{border-collapse:collapse;min-width:720px;background:var(--card)}
+  th,td{padding:11px 14px;text-align:left;border-bottom:1px solid #eee9db;font-size:13px;white-space:nowrap}
+  th{background:var(--paper-3);color:#8f8570;font-weight:700;font-size:12.5px;letter-spacing:1px;position:sticky;top:0}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:var(--paper-2)}
+  .pill{display:inline-block;padding:3px 11px;border-radius:20px;font-size:12px;font-weight:700}
+  .s-OPEN{background:var(--ok-l);color:var(--ok)}
+  .s-DRAFT{background:#efead9;color:#8f8570}
+  .s-CLOSED{background:var(--warn-l);color:var(--warn-d)}
+  .s-FINISHED{background:var(--blue-l);color:var(--blue)}
+  .s-ARCHIVED{background:#efead9;color:var(--muted)}
+  .e-ENROLLED{background:var(--ok-l);color:var(--ok)}
+  .e-WITHDRAWN{background:#efead9;color:#8f8570}
+  .e-CANCELLED{background:#fae3db;color:#b04a2c}
+  .row-actions{display:flex;gap:8px}
+  .link{color:var(--brand);cursor:pointer;font-weight:700}
+  .link:hover{text-decoration:underline}
+  .link.danger{color:var(--danger)}
+  .muted{color:var(--muted)}
+  .empty{padding:34px;text-align:center;color:var(--muted);line-height:1.8}
+
+  /* 进度条 */
+  .bar{height:8px;background:#efead9;border-radius:6px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle}
+  .bar > i{display:block;height:100%;background:var(--brand);border-radius:6px}
+  .bar.full > i{background:var(--danger)}
+  .bar.warn > i{background:var(--warn)}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+  .tab{padding:7px 16px;border:1px solid var(--line-d);background:var(--card);border-radius:999px;font-size:13px;color:var(--ink-2);transition:.15s}
+  .tab:hover{border-color:var(--ink)}
+  .tab.active{background:var(--ink);color:#f6f3ec;border-color:var(--ink);font-weight:800}
+
+  /* 课表网格 */
+  .grid-scroll{overflow:auto}
+  .sched-grid{display:grid;gap:8px;min-width:760px}
+  .cell-head{background:var(--ink);color:#f6f3ec;font-weight:700;font-size:12px;letter-spacing:1px;padding:9px 8px;text-align:center;border-radius:10px}
+  .cell{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 9px;min-height:56px;font-size:12px}
+  .cell .cname{font-weight:700;color:var(--ink);line-height:1.35}
+  .cell.conflict{border:1.5px solid var(--danger);background:var(--danger-l)}
+  .cell .badge{display:inline-block;margin-top:4px;background:var(--danger);color:#fff;border-radius:6px;padding:1px 7px;font-size:10.5px;font-weight:800}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:12px}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block;vertical-align:-1px;margin-right:5px}
+
+  /* modal */
+  .modal-mask{position:fixed;inset:0;background:rgba(32,37,58,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .modal{background:var(--card);border-radius:18px;width:560px;max-width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(32,37,58,.4)}
+  .modal.wide{width:680px}
+  .modal-head{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-head h3{margin:0;font-size:17px;font-weight:900;letter-spacing:1px;color:var(--ink)}
+  .modal-x{border:none;background:none;font-size:22px;color:var(--muted);line-height:1;transition:.15s}
+  .modal-x:hover{color:var(--ink)}
+  .modal-body{padding:20px 24px;overflow:auto}
+  .modal-foot{padding:14px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .checks{max-height:150px;overflow:auto;border:1px solid var(--line-d);border-radius:10px;padding:10px;background:var(--paper-2)}
+  .checks label{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13.5px;cursor:pointer}
+  .sched-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center}
+  .sched-row select{padding:9px 10px;border:1px solid var(--line-d);border-radius:9px;background:var(--paper-2);font-size:13px;color:var(--text);outline:none}
+  .sched-row select:focus{border-color:var(--brand)}
+  .alert-box{background:var(--danger-l);border:1px solid #f0d0c4;color:#a8401f;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.6}
+  .alert-box.ok{background:var(--ok-l);border-color:#bfe3cb;color:var(--ok)}
+  .alert-box b{display:block;margin-bottom:4px}
+  .json{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--ink-2);background:var(--paper-3);padding:8px 10px;border-radius:8px}
+
+  /* toast */
+  #toast{position:fixed;top:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#f6f3ec;padding:11px 22px;border-radius:12px;font-size:14px;z-index:99;opacity:0;transition:.25s;pointer-events:none;box-shadow:0 12px 36px rgba(32,37,58,.4)}
+  #toast.show{opacity:1}
+  #toast.err{background:#b53022}
+  #toast.ok{background:var(--ok)}
+
+  .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:-3px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* 工作台扩展 */
+  .quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:22px}
+  .qcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;box-shadow:var(--shadow);transition:.15s}
+  .qcard:hover{border-color:var(--brand);transform:translateY(-2px);box-shadow:0 14px 34px rgba(50,46,30,.1)}
+  .qcard .qi{width:38px;height:38px;border-radius:11px;background:var(--brand-l);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+  .qcard .qt{font-weight:800;font-size:14px;color:var(--ink)}
+  .qcard .qs{font-size:12px;color:var(--muted)}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:880px){.two-col{grid-template-columns:1fr}}
+  .alert-list{display:flex;flex-direction:column;gap:8px}
+  .alert-item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:11px;background:var(--paper-2);border:1px solid var(--line);font-size:13px;transition:.15s}
+  .alert-item[data-go]:hover{border-color:var(--brand)}
+  .alert-item .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  .alert-item .dot.r{background:var(--danger)} .alert-item .dot.w{background:var(--warn)} .alert-item .dot.b{background:var(--brand)} .alert-item .dot.g{background:var(--ok)}
+  .alert-item .ai-main{flex:1} .alert-item .ai-sub{color:var(--muted);font-size:12px;margin-top:2px}
+  .mini-bar{height:8px;background:#efead9;border-radius:6px;overflow:hidden;flex:1}
+  .mini-bar>i{display:block;height:100%;background:var(--brand);border-radius:6px}
+  .mini-bar.full>i{background:var(--danger)} .mini-bar.warn>i{background:var(--warn)}
+  .fill-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eee9db;font-size:13px}
+  .fill-row:last-child{border-bottom:none}
+  .fill-row .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fill-row .fp{width:150px;display:flex;align-items:center;gap:8px}
+  .fill-row .pct{width:38px;text-align:right;color:var(--muted);font-size:12px;flex-shrink:0}
+  .dist-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .dist-chip{background:var(--paper-2);border:1px solid var(--line);border-radius:20px;padding:5px 13px;font-size:12.5px;color:var(--ink-2)}
+  .dist-chip b{color:var(--brand)}
+  .enr-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee9db;font-size:13px}
+  .enr-item:last-child{border-bottom:none}
+  .enr-item .av{width:32px;height:32px;border-radius:10px;background:var(--brand-l);color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+  .enr-item .em{flex:1;min-width:0}
+  .enr-item .em b{font-weight:700}
+  .enr-item .et{color:var(--muted);font-size:11.5px;margin-top:1px}
+  .mini-stat{padding:12px 14px!important}
+  .mini-stat .n{font-size:22px!important}
+</style>
+</head>
+<body>
+
+<!-- 登录 -->
+<section id="loginPage">
+  <div class="login-card">
+    <div class="login-kicker">铁英中学 · 校本选课平台</div>
+    <h1><span class="logo">课</span> 课序</h1>
+    <p class="login-sub">校本选课排课 · 教务管理后台</p>
+    <div class="field">
+      <label>账号</label>
+      <input id="loginUser" placeholder="管理员账号" value="admin" />
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input id="loginPwd" type="password" placeholder="密码" value="demo123456" />
+    </div>
+    <button class="btn" id="loginBtn">登录</button>
+    <div class="login-tip">演示账号：admin / demo123456（首次登录需修改密码）</div>
+  </div>
+</section>
+
+<!-- 改密 -->
+<div class="modal-mask hidden" id="cpModal">
+  <div class="modal">
+    <div class="modal-head"><h3>首次登录，请设置新密码</h3></div>
+    <div class="modal-body">
+      <div class="field"><label>新密码（至少 8 位）</label><input id="cpNew" type="password" placeholder="至少 8 位" /></div>
+      <div class="field"><label>确认新密码</label><input id="cpConfirm" type="password" placeholder="再次输入" /></div>
+      <div id="cpErr" class="alert-box hidden"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn sm ghost" id="cpCancel">退出</button>
+      <button class="btn sm" id="cpSave">保存并进入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<div id="adminApp" class="hidden">
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="logo">课</span>
+      <div><b>课序</b><span>教务管理后台</span></div>
+    </div>
+    <nav class="nav">
+      <button class="active" data-page="dashboard"><span class="icon">⌂</span> 工作台</button>
+      <button data-page="courses"><span class="icon">▤</span> 课程管理</button>
+      <button data-page="schedule"><span class="icon">▦</span> 课表与场地</button>
+      <button data-page="enrollments"><span class="icon">✓</span> 报名管理</button>
+      <button data-page="settings"><span class="icon">⚙</span> 规则与日志</button>
+    </nav>
+    <div class="side-foot">
+      <b id="sideUser">—</b>
+      <span id="sideType"></span>
+      <a id="logoutBtn">退出登录</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h2 id="topTitle">工作台</h2>
+        <div class="sub" id="topSub"></div>
+      </div>
+      <div class="muted" id="topRight"></div>
+    </div>
+
+    <div class="content">
+      <!-- 工作台 -->
+      <section id="page-dashboard" class="page active"></section>
+      <!-- 课程管理 -->
+      <section id="page-courses" class="page"></section>
+      <!-- 课表与场地 -->
+      <section id="page-schedule" class="page"></section>
+      <!-- 报名管理 -->
+      <section id="page-enrollments" class="page"></section>
+      <!-- 规则与日志 -->
+      <section id="page-settings" class="page"></section>
+    </div>
+  </div>
+</div>
+
+<!-- 课程表单 modal -->
+<div class="modal-mask hidden" id="courseModal">
+  <div class="modal wide">
+    <div class="modal-head"><h3 id="courseModalTitle">新建课程</h3><button class="modal-x" data-close="courseModal">×</button></div>
+    <div class="modal-body">
+      <div id="courseConflict" class="alert-box hidden"></div>
+      <div class="two">
+        <div class="field"><label>课程名称 *</label><input id="f_name" placeholder="如：羽毛球进阶" /></div>
+        <div class="field"><label>课程分类</label><select id="f_category"></select></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>课程容量 *</label><input id="f_capacity" type="number" min="1" placeholder="如 30" /></div>
+        <div class="field"><label>状态</label><select id="f_status"><option value="DRAFT">草稿</option><option value="OPEN">开放报名</option><option value="CLOSED">已停止</option></select></div>
+      </div>
+      <div class="field"><label>课程简介</label><textarea id="f_desc" rows="2" placeholder="课程说明"></textarea></div>
+      <div class="field">
+        <label>报名范围</label>
+        <select id="f_scope_type">
+          <option value="all">全体学生</option>
+          <option value="grades">指定年级</option>
+          <option value="classes">指定班级</option>
+        </select>
+        <div id="f_scope_box" class="checks hidden" style="margin-top:8px"></div>
+      </div>
+      <div class="field">
+        <label>负责教师（可多选）</label>
+        <div id="f_teachers" class="checks"></div>
+      </div>
+      <div class="field">
+        <label>排课（时间 + 场地，可多段）</label>
+        <div id="f_schedules"></div>
+        <button class="btn sm ghost" id="addSched" style="margin-top:6px">+ 增加排课段</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn sm ghost" data-close="courseModal">取消</button>
+      <button class="btn sm" id="saveCourseBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 课程名单 modal -->
+<div class="modal-mask hidden" id="rosterModal">
+  <div class="modal wide">
+    <div class="modal-head"><h3 id="rosterTitle">课程名单</h3><button class="modal-x" data-close="rosterModal">×</button></div>
+    <div class="modal-body">
+      <div class="toolbar">
+        <div class="row-actions">
+          <select id="rosterStatus" style="padding:7px 10px;border:1px solid var(--line-d);border-radius:9px">
+            <option value="ALL">全部记录</option>
+            <option value="ENROLLED">已报名</option>
+            <option value="WITHDRAWN">已退课</option>
+            <option value="CANCELLED">已取消</option>
+          </select>
+          <select id="rosterStudent" style="padding:7px 10px;border:1px solid var(--line-d);border-radius:9px;min-width:150px"></select>
+          <button class="btn sm" id="proxyEnrollBtn">代报名</button>
+        </div>
+      </div>
+      <div id="rosterList"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const BASE = 'http://localhost:3000';
+const STATUS_LABEL = { OPEN:'开放报名', DRAFT:'草稿', CLOSED:'已停止', FINISHED:'已结束', ARCHIVED:'已归档' };
+const ESTATUS_LABEL = { ENROLLED:'已报名', WITHDRAWN:'已退课', CANCELLED:'已取消' };
+let TOKEN = localStorage.getItem('kexu_admin_token') || '';
+let META = null;
+let editingCourseId = null;
+let rosterCourseId = null;
+
+/* ---------- 工具 ---------- */
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function $(s,el){ return (el||document).querySelector(s); }
+function $all(s,el){ return Array.from((el||document).querySelectorAll(s)); }
+function toast(msg, kind){ const t=$('#toast'); t.textContent=msg; t.className='show '+(kind||''); setTimeout(()=>t.className='',2200); }
+async function api(method, path, body){
+  const opt={ method, headers:{ 'Content-Type':'application/json' } };
+  if(TOKEN) opt.headers.Authorization='Bearer '+TOKEN;
+  if(body!==undefined) opt.body=JSON.stringify(body);
+  const r=await fetch(BASE+path, opt);
+  let json; try{ json=await r.json(); }catch{ json={}; }
+  if(r.status===401){ logout(); throw new Error('登录已失效，请重新登录'); }
+  return { status:r.status, json };
+}
+function requireAuth(){ if(!TOKEN){ showLogin(); return false; } return true; }
+
+/* ---------- 登录 ---------- */
+function showLogin(){ $('#loginPage').classList.remove('hidden'); $('#adminApp').classList.add('hidden'); }
+function showApp(){ $('#loginPage').classList.add('hidden'); $('#adminApp').classList.remove('hidden'); }
+async function doLogin(){
+  const btn=$('#loginBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+  try{
+    const { json }=await api('POST','/api/auth/login',{ username:$('#loginUser').value.trim(), password:$('#loginPwd').value });
+    if(json.code!=='OK'){ toast(json.message||'登录失败','err'); return; }
+    TOKEN=json.data.token; localStorage.setItem('kexu_admin_token', TOKEN);
+    META=null;
+    if(json.data.must_change_password){ openChangePassword(); }
+    else { enterApp(json.data); }
+  }catch(e){ toast(e.message||'网络错误','err'); }
+  finally{ btn.disabled=false; btn.textContent='登录'; }
+}
+function enterApp(user){
+  showApp();
+  $('#sideUser').textContent=user.username;
+  $('#sideType').textContent=user.user_type==='SUPER_ADMIN'?'超级管理员':'教务人员';
+  loadMetaThen(()=>go('dashboard'));
+}
+async function loadMetaThen(cb){
+  if(!META){ const { json }=await api('GET','/api/admin/meta'); if(json.code==='OK') META=json.data; }
+  cb&&cb();
+}
+function openChangePassword(){
+  $('#cpErr').classList.add('hidden'); $('#cpNew').value=''; $('#cpConfirm').value='';
+  $('#cpModal').classList.remove('hidden');
+}
+async function saveChangePassword(){
+  const np=$('#cpNew').value, cp=$('#cpConfirm').value;
+  if(np.length<8){ $('#cpErr').textContent='密码至少 8 位'; $('#cpErr').classList.remove('hidden'); return; }
+  if(np!==cp){ $('#cpErr').textContent='两次输入不一致'; $('#cpErr').classList.remove('hidden'); return; }
+  const { json }=await api('POST','/api/auth/change-password',{ new_password:np, confirm_password:cp });
+  if(json.code!=='OK'){ $('#cpErr').textContent=json.message; $('#cpErr').classList.remove('hidden'); return; }
+  $('#cpModal').classList.add('hidden'); toast('密码已更新','ok');
+  const { json:me }=await api('GET','/api/admin/dashboard'); enterApp({username:$('#loginUser').value, user_type:'SUPER_ADMIN'});
+}
+function logout(){ TOKEN=''; localStorage.removeItem('kexu_admin_token'); showLogin(); }
+
+/* ---------- 导航 ---------- */
+const PAGE_TITLE={ dashboard:'工作台', courses:'课程管理', schedule:'课表与场地', enrollments:'报名管理', settings:'规则与日志' };
+const PAGE_SUB={
+  dashboard:'选课报名总体概况与最近操作',
+  courses:'新建 / 编辑课程，保存时进行硬冲突校验',
+  schedule:'按星期查看课程与场地分布，红色为硬冲突',
+  enrollments:'查看全部报名与退课记录，可代学生退课',
+  settings:'维护业务规则配置与操作审计日志'
+};
+function go(page){
+  $all('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.page===page));
+  $all('.page').forEach(p=>p.classList.toggle('active', p.id==='page-'+page));
+  $('#topTitle').textContent=PAGE_TITLE[page]; $('#topSub').textContent=PAGE_SUB[page];
+  $('#topRight').textContent='';
+  if(page==='dashboard') renderDashboard();
+  if(page==='courses') renderCourses();
+  if(page==='schedule') renderSchedule();
+  if(page==='enrollments') renderEnrollments();
+  if(page==='settings') renderSettings();
+}
+
+/* ---------- 工作台 ---------- */
+async function renderDashboard(){
+  const el=$('#page-dashboard'); el.innerHTML='<div class="empty">加载中…</div>';
+  const { json }=await api('GET','/api/admin/dashboard');
+  if(json.code!=='OK'){ el.innerHTML='<div class="empty">加载失败：'+(json.message||'')+'</div>'; return; }
+  const d=json.data;
+
+  // 顶部统计卡
+  const stats=[
+    {n:d.students,l:'在校学生',c:''},
+    {n:d.staff,l:'教职工',c:''},
+    {n:d.open_courses,l:'开放课程',c:''},
+    {n:d.total_courses,l:'课程总数',c:''},
+    {n:d.active_enrollments,l:'有效报名',c:''},
+    {n:d.remaining_seats,l:'剩余学位',c:'warn'},
+    {n:d.full_courses,l:'已满课程',c:d.full_courses?'alert':''},
+    {n:d.conflict_courses,l:'排课冲突',c:d.conflict_courses?'alert':''},
+  ];
+  let html='<div class="stat-grid">'+stats.map(s=>`<div class="stat ${s.c}"><div class="n">${s.n}</div><div class="l">${s.l}</div></div>`).join('')+'</div>';
+
+  // 快捷操作
+  const q=(icon,title,sub,page)=>`<div class="qcard" data-go="${page}"><div class="qi">${icon}</div><div><div class="qt">${title}</div>${sub?`<div class="qs">${esc(sub)}</div>`:''}</div></div>`;
+  html+='<div class="quick-grid">'
+    + q('▤','新建课程','配置课程与排课','courses')
+    + q('▦','课表与场地','查看排课冲突','schedule')
+    + q('✓','报名管理','代报名 / 代退课','enrollments')
+    + q('⚙','规则与日志','配置与审计','settings')
+    + q('↻','刷新数据','','__refresh')
+    + '</div>';
+
+  // 待办与预警
+  const alerts=[];
+  if(d.draft_courses>0) alerts.push({c:'w',main:`${d.draft_courses} 门草稿课程尚未开放报名`,sub:'学生端不可见，开放后学生方可选课',go:'courses'});
+  if(d.conflict_courses>0) alerts.push({c:'r',main:`${d.conflict_courses} 门课程存在排课硬冲突`,sub:'同一时间教师或场地重叠，需到课表页调整',go:'schedule'});
+  if(d.near_full_courses&&d.near_full_courses.length) alerts.push({c:'r',main:`${d.near_full_courses.length} 门开放课程临近满员`,sub:'余位 ≤3 或报名率 ≥85%，请尽快决策',go:'courses'});
+  if(d.students_need_pwd>0) alerts.push({c:'w',main:`${d.students_need_pwd} 名学生仍使用初始密码`,sub:'存在账号安全风险，建议通知改密',go:''});
+  if(!alerts.length) alerts.push({c:'g',main:'当前无待办预警',sub:'系统运行正常',go:''});
+  html+='<div class="panel"><h3>待办与预警</h3><div class="desc">需要教务关注的事项</div><div class="alert-list">'
+    + alerts.map(a=>`<div class="alert-item" ${a.go?`data-go="${a.go}" style="cursor:pointer"`:''}><span class="dot ${a.c}"></span><div class="ai-main"><div>${esc(a.main)}</div>${a.sub?`<div class="ai-sub">${esc(a.sub)}</div>`:''}</div>${a.go?`<span class="link">前往 ›</span>`:''}</div>`).join('')
+    + '</div></div>';
+
+  // 两列：左=报名进度+最近报名；右=账号概览+分类分布
+  const ms=(n,l)=>`<div class="stat mini-stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  html+='<div class="two-col">';
+
+  // 左列
+  html+='<div>';
+  html+='<div class="panel"><h3>课程报名进度</h3><div class="desc">开放课程整体报名率 '+d.fill_rate+'%（'+d.used_seats+'/'+d.total_seats+' 学位）</div>';
+  if(!d.top_fill_courses.length) html+='<div class="empty">暂无开放课程</div>';
+  else html+=d.top_fill_courses.map(c=>{
+    const cls=c.remaining<=0?'full':(c.fill>=85?'warn':'');
+    return `<div class="fill-row"><span class="fn"><b>${esc(c.name)}</b> <span class="muted">${c.active_count}/${c.capacity}</span></span><span class="fp"><span class="mini-bar ${cls}"><i style="width:${c.fill}%"></i></span><span class="pct">${c.fill}%</span></span></div>`;
+  }).join('');
+  html+='</div>';
+
+  html+='<div class="panel"><h3>最近报名动态</h3><div class="desc">学生选课 / 退课实时记录</div>';
+  if(!d.recent_enrollments.length) html+='<div class="empty">暂无报名记录</div>';
+  else html+='<div>'+d.recent_enrollments.map(e=>{
+    const initial=(e.name||'?').slice(0,1);
+    const color=e.status==='ENROLLED'?'var(--brand-d)':(e.status==='CANCELLED'?'var(--muted)':'var(--warn)');
+    const label=e.status==='ENROLLED'?'报名':(e.status==='CANCELLED'?'退课':'已取消');
+    const src=e.source==='STUDENT'?'学生自助':'管理员代报';
+    return `<div class="enr-item"><div class="av" style="color:${color}">${esc(initial)}</div><div class="em"><b>${esc(e.name)}</b> ${esc(label)} <b>${esc(e.course_name)}</b><div class="et">${esc(e.student_no)} · ${src} · ${(e.enrolled_at||'').replace('T',' ').slice(0,19)}</div></div></div>`;
+  }).join('')+'</div>';
+  html+='</div>';
+  html+='</div>';
+
+  // 右列
+  html+='<div>';
+  html+='<div class="panel"><h3>学生账号概览</h3><div class="desc">账号与学生档案存储于服务端 data.json</div>';
+  html+='<div class="stat-grid">'+ms(d.students,'在校学生')+ms(d.students_wechat_bound,'已绑定微信')+ms(d.students_need_pwd,'待改密')+'</div>';
+  html+='<div class="desc" style="margin:2px 0 8px">按年级分布</div>';
+  html+='<div class="dist-chips">'+d.students_by_grade.map(g=>`<span class="dist-chip">${esc(g.grade)} <b>${g.count}</b></span>`).join('')+'</div>';
+  html+='</div>';
+
+  html+='<div class="panel"><h3>课程分类分布</h3><div class="desc">全部课程按分类统计</div><div class="dist-chips">'
+    + d.category_distribution.map(c=>`<span class="dist-chip">${esc(c.category)} <b>${c.count}</b></span>`).join('')
+    + '</div></div>';
+  html+='</div>';
+
+  html+='</div>';
+
+  // 最近操作审计
+  html+='<div class="panel"><h3>最近操作审计</h3><div class="desc">系统重要操作留痕</div>';
+  if(!d.recent_audit.length) html+='<div class="empty">暂无操作记录</div>';
+  else{
+    html+='<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作</th><th>对象</th><th>操作人</th></tr></thead><tbody>';
+    html+=d.recent_audit.map(a=>`<tr><td class="muted">${(a.created_at||'').replace('T',' ').slice(0,19)}</td><td><span class="pill s-OPEN">${esc(a.action)}</span></td><td class="muted">${esc(a.target_type)} #${a.target_id||''}</td><td class="muted">${a.actor_id}</td></tr>`).join('');
+    html+='</tbody></table></div>';
+  }
+  html+='</div>';
+
+  el.innerHTML=html;
+  // 绑定快捷操作 / 预警跳转
+  $all('[data-go]',el).forEach(b=>b.onclick=()=>{ const p=b.dataset.go; if(p==='__refresh') renderDashboard(); else go(p); });
+}
+
+/* ---------- 课程管理 ---------- */
+async function renderCourses(){
+  const el=$('#page-courses'); el.innerHTML='<div class="empty">加载中…</div>';
+  const { json }=await api('GET','/api/admin/courses');
+  if(json.code!=='OK'){ el.innerHTML='<div class="empty">加载失败</div>'; return; }
+  const items=json.data.items;
+  let html='<div class="toolbar"><div class="grow"></div><button class="btn sm" id="newCourseBtn">+ 新建课程</button></div>';
+  html+='<div class="table-wrap"><table><thead><tr><th>课程名称</th><th>分类</th><th>教师</th><th>容量/已报</th><th>余位</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+  if(!items.length) html+='<tr><td colspan="7" class="empty">暂无课程</td></tr>';
+  items.forEach(c=>{
+    const pct=Math.round(c.active_count/c.capacity*100);
+    const barCls=c.remaining<=0?'full':(pct>=85?'warn':'');
+    const conflictBtn = c.status==='OPEN'||c.status==='DRAFT' ? `<span class="link" data-roster="${c.id}">名单</span>` : '';
+    html+=`<tr>
+      <td><b>${esc(c.name)}</b></td>
+      <td class="muted">${esc(c.category)}</td>
+      <td class="muted">${esc((c.teachers||[]).join('、')||'—')}</td>
+      <td>${c.active_count}/${c.capacity} <span class="bar ${barCls}"><i style="width:${pct}%"></i></span></td>
+      <td>${c.remaining<=0?'<b style="color:var(--danger)">已满</b>':c.remaining}</td>
+      <td><span class="pill s-${c.status}">${STATUS_LABEL[c.status]||c.status}</span></td>
+      <td><div class="row-actions">
+        ${c.status==='DRAFT'||c.status==='CLOSED'?'<span class="link" data-open="'+c.id+'">开放</span>':''}
+        ${c.status==='OPEN'?'<span class="link" data-close="'+c.id+'">停止</span>':''}
+        ${c.status!=='ARCHIVED'&&c.status!=='FINISHED'?'<span class="link" data-edit="'+c.id+'">编辑</span>':''}
+        ${c.status==='OPEN'||c.status==='FINISHED'?'<span class="link" data-archive="'+c.id+'">归档</span>':''}
+        ${conflictBtn}
+      </div></td>
+    </tr>`;
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+  $('#newCourseBtn').onclick=()=>openCourseForm(null);
+  $all('[data-open]',el).forEach(b=>b.onclick=()=>setCourseStatus(b.dataset.open,'open'));
+  $all('[data-close]',el).forEach(b=>b.onclick=()=>setCourseStatus(b.dataset.close,'close'));
+  $all('[data-archive]',el).forEach(b=>b.onclick=()=>setCourseStatus(b.dataset.archive,'archive'));
+  $all('[data-edit]',el).forEach(b=>b.onclick=()=>openCourseForm(Number(b.dataset.edit)));
+  $all('[data-roster]',el).forEach(b=>b.onclick=()=>openRoster(Number(b.dataset.roster)));
+}
+async function setCourseStatus(id, action){
+  const label={open:'开放',close:'停止',archive:'归档'}[action];
+  if(!confirm('确认'+label+'该课程？')) return;
+  const { json }=await api('POST',`/api/admin/courses/${id}/${action}`);
+  if(json.code==='OK'){ toast('已'+label,'ok'); renderCourses(); }
+  else toast(json.message||'操作失败','err');
+}
+
+/* ---------- 课程表单 ---------- */
+function openCourseForm(id){
+  editingCourseId=id;
+  $('#courseConflict').classList.add('hidden');
+  $('#courseModalTitle').textContent=id?'编辑课程':'新建课程';
+  // 分类
+  $('#f_category').innerHTML=META.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  // 教师
+  $('#f_teachers').innerHTML=META.staff.map(s=>`<label><input type="checkbox" value="${s.id}"> ${esc(s.name)}</label>`).join('');
+  // 范围
+  const st=$('#f_scope_type'); st.value='all'; $('#f_scope_box').classList.add('hidden');
+  // 排课
+  $('#f_schedules').innerHTML=''; addSchedRow();
+  if(id){
+    api('GET','/api/admin/courses').then(({json})=>{
+      const c=json.data.items.find(x=>x.id===id);
+      if(!c) return;
+      $('#f_name').value=c.name; $('#f_capacity').value=c.capacity; $('#f_status').value=c.status; $('#f_desc').value=c.description||'';
+      $('#f_category').value=c.category_id;
+      $all('#f_teachers input').forEach(ch=>{ if((c.teacher_ids||[]).includes(Number(ch.value))) ch.checked=true; });
+      // scope
+      const sc=c.allowed_scope||{type:'all'};
+      st.value=sc.type||'all';
+      if(sc.type==='grades'||sc.type==='classes'){ renderScopeBox(sc.type, sc[sc.type]||[]); }
+      // schedules
+      $('#f_schedules').innerHTML='';
+      (c.schedules||[]).forEach(s=>addSchedRow(s.time_slot_id, s.venue_id));
+      if(!(c.schedules||[]).length) addSchedRow();
+    });
+  } else {
+    $('#f_name').value=''; $('#f_capacity').value=''; $('#f_status').value='DRAFT'; $('#f_desc').value='';
+  }
+  $('#courseModal').classList.remove('hidden');
+}
+function renderScopeBox(type, selected){
+  const box=$('#f_scope_box'); box.classList.remove('hidden');
+  const list=type==='grades'?META.grades:META.classes;
+  box.innerHTML=list.map(o=>`<label><input type="checkbox" value="${o.id}" ${selected.includes(o.id)?'checked':''}> ${esc(o.name)}</label>`).join('');
+}
+function addSchedRow(tsId, vId){
+  const row=document.createElement('div'); row.className='sched-row';
+  const slots=META.time_slots.map(t=>`<option value="${t.id}" ${t.id===tsId?'selected':''}>${esc(t.name)}</option>`).join('');
+  const venues=META.venues.map(v=>`<option value="${v.id}" ${v.id===vId?'selected':''}>${esc(v.name)}</option>`).join('');
+  row.innerHTML=`<select class="s-ts">${slots}</select><select class="s-vn">${venues}</select><button class="btn sm ghost s-del">×</button>`;
+  row.querySelector('.s-del').onclick=()=>{ row.remove(); if(!$('#f_schedules').children.length) addSchedRow(); };
+  $('#f_schedules').appendChild(row);
+}
+async function submitCourseForm(){
+  const name=$('#f_name').value.trim();
+  const capacity=parseInt($('#f_capacity').value,10);
+  if(!name){ toast('请填写课程名称','err'); return; }
+  if(!capacity||capacity<1){ toast('容量需为正整数','err'); return; }
+  const teachers=$all('#f_teachers input:checked').map(ch=>Number(ch.value));
+  const schedules=$all('#f_schedules .sched-row').map(r=>({ time_slot_id:r.querySelector('.s-ts').value, venue_id:r.querySelector('.s-vn').value })).filter(s=>s.time_slot_id&&s.venue_id);
+  if(!schedules.length){ toast('至少安排一段排课','err'); return; }
+  const scopeType=$('#f_scope_type').value;
+  let allowed_scope={type:'all'};
+  if(scopeType==='grades'||scopeType==='classes'){
+    const ids=$all('#f_scope_box input:checked').map(ch=>Number(ch.value));
+    allowed_scope={ type:scopeType, [scopeType]:ids };
+  }
+  const body={ name, category_id:Number($('#f_category').value), capacity, status:$('#f_status').value, description:$('#f_desc').value, teachers, schedules, allowed_scope };
+  const btn=$('#saveCourseBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+  const path=editingCourseId?`/api/admin/courses/${editingCourseId}`:'/api/admin/courses';
+  const method=editingCourseId?'PUT':'POST';
+  try{
+    const { json }=await api(method, path, body);
+    if(json.code==='OK'){ toast(editingCourseId?'已保存':'已创建','ok'); $('#courseModal').classList.add('hidden'); renderCourses(); }
+    else if(json.code==='HARD_CONFLICT'){
+      const d=json.details||{}; let msg='<b>保存失败：存在硬冲突</b>';
+      if(d.teacher&&d.teacher.length) msg+='<br>· 教师冲突：'+d.teacher.map(t=>esc(t.name)+'（'+esc(t.reason)+'）').join('；');
+      if(d.venue&&d.venue.length) msg+='<br>· 场地冲突：'+d.venue.map(t=>esc(t.name)+'（'+esc(t.reason)+'）').join('；');
+      if(d.student&&d.student.count) msg+='<br>· 学生冲突：'+d.student.count+' 名学生时间重叠（'+esc((d.student.students||[]).join('、'))+'）';
+      const box=$('#courseConflict'); box.innerHTML=msg; box.classList.remove('hidden');
+    } else { toast(json.message||'保存失败','err'); }
+  }catch(e){ toast(e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='保存'; }
+}
+
+/* ---------- 课程名单 ---------- */
+async function openRoster(id){
+  rosterCourseId=id;
+  const { json }=await api('GET','/api/admin/courses/'+id);
+  const c = json.code==='OK'?json.data.course:null;
+  $('#rosterTitle').textContent='课程名单 · '+(c?esc(c.name):'#'+id);
+  // 学生下拉
+  const { json:stu }=await api('GET','/api/admin/students');
+  $('#rosterStudent').innerHTML='<option value="">选择学生代报名…</option>'+(stu.code==='OK'?stu.data.items.map(s=>`<option value="${s.student_no}">${esc(s.name)}（${esc(s.student_no)}）</option>`).join(''):'');
+  $('#rosterStatus').value='ALL';
+  $('#rosterModal').classList.remove('hidden');
+  await loadRoster();
+}
+async function loadRoster(){
+  const status=$('#rosterStatus').value;
+  const { json }=await api('GET',`/api/admin/courses/${rosterCourseId}/enrollments?status=${status}`);
+  const el=$('#rosterList');
+  if(json.code!=='OK'){ el.innerHTML='<div class="empty">加载失败</div>'; return; }
+  const items=json.data.items;
+  if(!items.length){ el.innerHTML='<div class="empty">暂无记录</div>'; return; }
+  let html='<div class="table-wrap"><table><thead><tr><th>学号</th><th>姓名</th><th>状态</th><th>来源</th><th>报名时间</th><th>操作</th></tr></thead><tbody>';
+  items.forEach(e=>{
+    const src=e.source==='STUDENT'?'学生自助':'管理员代报';
+    const act=e.status==='ENROLLED'?`<span class="link danger" data-wd="${e.enrollment_id}">代退课</span>`:'<span class="muted">—</span>';
+    html+=`<tr><td class="muted">${esc(e.student_no)}</td><td><b>${esc(e.name)}</b></td><td><span class="pill e-${e.status}">${ESTATUS_LABEL[e.status]||e.status}</span></td><td class="muted">${src}</td><td class="muted">${(e.enrolled_at||'').replace('T',' ').slice(0,19)}</td><td>${act}</td></tr>`;
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+  $all('[data-wd]',el).forEach(b=>b.onclick=()=>withdrawEnroll(b.dataset.wd));
+}
+async function withdrawEnroll(eid){
+  if(!confirm('确认代该学生退课？')) return;
+  const { json }=await api('DELETE','/api/admin/enrollments/'+eid,{ reason:'管理员代退课' });
+  if(json.code==='OK'){ toast('已退课','ok'); loadRoster(); } else toast(json.message||'退课失败','err');
+}
+async function proxyEnroll(){
+  const no=$('#rosterStudent').value;
+  if(!no){ toast('请选择学生','err'); return; }
+  const { json:stu }=await api('GET','/api/admin/students?q='+encodeURIComponent(no));
+  const s=stu.code==='OK'&&stu.data.items.find(x=>x.student_no===no);
+  if(!s){ toast('未找到学生','err'); return; }
+  const { json }=await api('POST',`/api/admin/courses/${rosterCourseId}/enrollments`,{ student_id:s.id });
+  // 后端按 student_id（=students.id）接收，这里把 student_no 映射回 id
+  if(json.code!=='OK'){ toast(json.message||'代报名失败','err'); return; }
+  toast('代报名成功','ok'); $('#rosterStudent').value=''; loadRoster();
+}
+
+/* ---------- 课表与场地 ---------- */
+let schedWeekday=1;
+async function renderSchedule(){
+  const el=$('#page-schedule'); el.innerHTML='<div class="empty">加载中…</div>';
+  const [{json:courses},{json:meta}]=await Promise.all([api('GET','/api/admin/courses'), api('GET','/api/admin/meta')]);
+  if(courses.code!=='OK'){ el.innerHTML='<div class="empty">加载失败</div>'; return; }
+  META=meta.code==='OK'?meta.data:META;
+  const wds=[1,2,3,4,5]; const wdName={1:'周一',2:'周二',3:'周三',4:'周四',5:'周五'};
+  const periods=[6,7,8]; const venues=META.venues;
+  const venueIndex={}; venues.forEach((v,i)=>venueIndex[v.name]=i);
+  // tab
+  let html='<div class="tabs">'+wds.map(w=>`<button class="tab ${w===schedWeekday?'active':''}" data-wd="${w}">${wdName[w]}</button>`).join('')+'</div>';
+  html+='<div class="legend"><span><i style="background:#fafdfb;border:1px solid var(--line-d)"></i>正常</span><span><i style="background:var(--danger-l);border:1.5px solid var(--danger)"></i>硬冲突（同一时间同一场地多门课）</span></div>';
+  html+='<div class="grid-scroll"><div class="sched-grid" style="grid-template-columns:70px repeat('+venues.length+',1fr)">';
+  html+='<div class="cell-head">节次\\场地</div>'+venues.map(v=>`<div class="cell-head">${esc(v.name)}</div>`).join('');
+  // 收集本周课程
+  const grid={}; // key period|venueName -> [courseName]
+  courses.data.items.filter(c=>['OPEN','DRAFT','CLOSED','FINISHED'].includes(c.status)).forEach(c=>{
+    (c.schedules||[]).forEach(s=>{
+      if(s.weekday!==schedWeekday) return;
+      const key=s.period+'|'+(s.venue_name||'');
+      (grid[key]=grid[key]||[]).push(c.name);
+    });
+  });
+  periods.forEach(p=>{
+    html+=`<div class="cell-head">第${p}节</div>`;
+    venues.forEach(v=>{
+      const arr=grid[p+'|'+v.name]||[];
+      const conflict=arr.length>1;
+      const inner=arr.map(n=>`<div class="cname">${esc(n)}</div>`).join('');
+      const badge=conflict?`<span class="badge">冲突 ×${arr.length}</span>`:'';
+      html+=`<div class="cell ${conflict?'conflict':''}">${inner}${badge}</div>`;
+    });
+  });
+  html+='</div></div>';
+  el.innerHTML=html;
+  $all('[data-wd]',el).forEach(b=>b.onclick=()=>{ schedWeekday=Number(b.dataset.wd); renderSchedule(); });
+}
+
+/* ---------- 报名管理 ---------- */
+let enrollStatus='ALL';
+async function renderEnrollments(){
+  const el=$('#page-enrollments'); el.innerHTML='<div class="empty">加载中…</div>';
+  let html='<div class="toolbar"><div class="tabs" style="margin:0">'
+    +[['ALL','全部'],['ENROLLED','已报名'],['WITHDRAWN','已退课'],['CANCELLED','已取消']].map(([k,l])=>`<button class="tab ${k===enrollStatus?'active':''}" data-st="${k}">${l}</button>`).join('')
+    +'</div><div class="grow"></div><div class="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="enrollSearch" placeholder="搜索学号/姓名/课程" style="padding:8px 12px 8px 30px;border:1px solid #d3ddd8;border-radius:9px;width:240px"></div></div>';
+  html+='<div id="enrollTable"></div>';
+  el.innerHTML=html;
+  $all('[data-st]',el).forEach(b=>b.onclick=()=>{ enrollStatus=b.dataset.st; renderEnrollments(); });
+  $('#enrollSearch').oninput=debounce(loadEnrollTable,300);
+  await loadEnrollTable();
+}
+async function loadEnrollTable(){
+  const q=$('#enrollSearch')?$('#enrollSearch').value.trim():'';
+  const { json }=await api('GET',`/api/admin/enrollments?status=${enrollStatus}`+(q?`&q=${encodeURIComponent(q)}`:''));
+  const el=$('#enrollTable');
+  if(json.code!=='OK'){ el.innerHTML='<div class="empty">加载失败</div>'; return; }
+  const items=json.data.items;
+  if(!items.length){ el.innerHTML='<div class="empty">暂无报名记录</div>'; return; }
+  let html='<div class="table-wrap"><table><thead><tr><th>课程</th><th>学号</th><th>姓名</th><th>状态</th><th>来源</th><th>报名时间</th><th>操作</th></tr></thead><tbody>';
+  items.forEach(e=>{
+    const src=e.source==='STUDENT'?'学生自助':'管理员代报';
+    const act=e.status==='ENROLLED'?`<span class="link danger" data-wd="${e.enrollment_id}">代退课</span>`:'<span class="muted">—</span>';
+    html+=`<tr><td><b>${esc(e.course_name)}</b></td><td class="muted">${esc(e.student_no)}</td><td>${esc(e.student_name)}</td><td><span class="pill e-${e.status}">${ESTATUS_LABEL[e.status]||e.status}</span></td><td class="muted">${src}</td><td class="muted">${(e.enrolled_at||'').replace('T',' ').slice(0,19)}</td><td>${act}</td></tr>`;
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+  $all('[data-wd]',el).forEach(b=>b.onclick=()=>withdrawEnrollGlobal(b.dataset.wd));
+}
+async function withdrawEnrollGlobal(eid){
+  if(!confirm('确认代该学生退课？')) return;
+  const { json }=await api('DELETE','/api/admin/enrollments/'+eid,{ reason:'管理员代退课' });
+  if(json.code==='OK'){ toast('已退课','ok'); loadEnrollTable(); } else toast(json.message||'退课失败','err');
+}
+function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+/* ---------- 规则与日志 ---------- */
+async function renderSettings(){
+  const el=$('#page-settings'); el.innerHTML='<div class="empty">加载中…</div>';
+  const [{json:cfg},{json:audit}]=await Promise.all([api('GET','/api/admin/configs'), api('GET','/api/admin/audit')]);
+  let html='<div class="panel"><h3>业务规则配置</h3><div class="desc">修改后点击「保存配置」生效</div>';
+  if(cfg.code==='OK'){
+    html+='<div id="cfgBox">'+cfg.data.items.map(c=>`<div class="field" style="display:flex;align-items:center;gap:12px"><label style="width:260px;margin:0">${esc(c.key)} <span class="muted">(${esc(c.type)})</span></label><input data-key="${esc(c.key)}" value="${esc(c.value)}" style="max-width:200px"></div>`).join('')+'</div>';
+    html+='<button class="btn sm" id="saveCfgBtn" style="margin-top:6px">保存配置</button>';
+  } else html+='<div class="empty">加载失败</div>';
+  html+='</div>';
+  // 审计
+  html+='<div class="panel"><h3>操作审计日志</h3><div class="desc">最近 50 条重要操作</div>';
+  if(audit.code==='OK'&&audit.data.items.length){
+    html+='<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作</th><th>对象</th><th>操作人</th><th>变更</th></tr></thead><tbody>';
+    audit.data.items.forEach(a=>{
+      let diff='—';
+      try{ const b=a.before_json?JSON.parse(a.before_json):null; const af=a.after_json?JSON.parse(a.after_json):null;
+        if(b||af) diff=`<span class="json">${esc(JSON.stringify(af||b))}</span>`; }catch{}
+      html+=`<tr><td class="muted">${(a.created_at||'').replace('T',' ').slice(0,19)}</td><td><span class="pill s-OPEN">${esc(a.action)}</span></td><td class="muted">${esc(a.target_type)} #${a.target_id||''}</td><td class="muted">${a.actor_id}</td><td>${diff}</td></tr>`;
+    });
+    html+='</tbody></table></div>';
+  } else html+='<div class="empty">暂无日志</div>';
+  html+='</div>';
+  el.innerHTML=html;
+  if(cfg.code==='OK'){
+    $('#saveCfgBtn').onclick=async()=>{
+      const items=$all('#cfgBox input').map(i=>({ key:i.dataset.key, value:i.value }));
+      const { json }=await api('PUT','/api/admin/configs',{ items });
+      if(json.code==='OK') toast('配置已保存','ok'); else toast(json.message||'保存失败','err');
+    };
+  }
+}
+
+/* ---------- 事件绑定 ---------- */
+// 侧边栏主页面导航（修复：此前 .nav 按钮未绑定点击，导致进入子页面后无法返回）
+$all('.nav button').forEach(b=>b.onclick=()=>go(b.dataset.page));
+$('#loginBtn').onclick=doLogin;
+$('#cpSave').onclick=saveChangePassword;
+$('#cpCancel').onclick=logout;
+$('#logoutBtn').onclick=logout;
+$('#saveCourseBtn').onclick=submitCourseForm;
+$('#addSched').onclick=()=>addSchedRow();
+$('#f_scope_type').onchange=(e)=>{ const t=e.target.value; if(t==='grades'||t==='classes') renderScopeBox(t,[]); else $('#f_scope_box').classList.add('hidden'); };
+$('#rosterStatus').onchange=loadRoster;
+$('#proxyEnrollBtn').onclick=proxyEnroll;
+$all('[data-close]').forEach(b=>b.onclick=()=>$('#'+b.dataset.close).classList.add('hidden'));
+// 点击遮罩空白处关闭非强制弹窗（改密弹窗 cpModal 除外，必须完成改密才能进入）
+$all('.modal-mask').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m && m.id!=='cpModal') m.classList.add('hidden'); }));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') $all('.modal-mask').forEach(m=>m.classList.add('hidden')); });
+
+// 自动登录
+if(TOKEN){ loadMetaThen(()=>{ api('GET','/api/admin/dashboard').then(({json})=>{ if(json.code==='OK') enterApp({username:localStorage.getItem('kexu_admin_user')||'admin', user_type:'SUPER_ADMIN'}); else showLogin(); }).catch(()=>showLogin()); }); }
+else showLogin();
+</script>
+</body>
+</html>
