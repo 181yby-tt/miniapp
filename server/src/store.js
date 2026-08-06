@@ -1,9 +1,12 @@
 'use strict';
 
 /**
- * 存储层：支持两种持久化后端
+ * 存储层：支持三种持久化后端
  *  1) 文件模式（默认，零依赖）：内存镜像 + data.json 兜底落盘。适合本地演示、无依赖启动。
- *  2) MySQL / 云数据库（配置 DB_HOST 后启用）：
+ *  2) CloudBase MySQL SDK 网关（DB_MODE=cloudbase_mysql）：
+ *       - 把完整运行时快照轮换写入 MySQL 的 app_snapshots A/B 两行，单行更新天然原子
+ *       - 通过 CloudBase 服务端 SDK / HTTPS 网关调用，不依赖 VPC，也不暴露 MySQL 公网地址
+ *  3) MySQL / 云数据库（配置 DB_HOST 或 DB_MODE=mysql 后启用）：
  *       - 启动跑 docs/schema.sql 建表（幂等）
  *       - 库为空则写入种子数据，否则从库加载快照到内存并恢复自增序列
  *       - 每次 save() 异步（事务批量）刷新到库，保证云托管弹性实例重启后数据不丢
@@ -45,7 +48,11 @@ function nextId(collection) {
 
 /* ----------------------------- MySQL 配置（懒加载） ----------------------------- */
 
-const USE_MYSQL = !!process.env.DB_HOST;
+const DB_MODE = String(
+  process.env.DB_MODE || (process.env.DB_HOST ? 'mysql' : 'file')
+).toLowerCase();
+const USE_CLOUDBASE_MYSQL = DB_MODE === 'cloudbase_mysql';
+const USE_MYSQL = DB_MODE === 'mysql';
 const DB_CFG = {
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || '3306', 10),
@@ -79,6 +86,104 @@ async function getPool() {
   if (!mysqlReady) return null;
   if (!pool) pool = mysql2().createPool(DB_CFG);
   return pool;
+}
+
+/* ------------------------- CloudBase MySQL SDK 网关 ------------------------- */
+
+const CLOUDBASE_ENV_ID = process.env.CLOUDBASE_ENV_ID || process.env.TCB_ENV || '';
+const CLOUDBASE_MYSQL_TABLE = process.env.CLOUDBASE_MYSQL_TABLE || 'app_snapshots';
+const CLOUDBASE_SNAPSHOT_KEY = process.env.CLOUDBASE_SNAPSHOT_KEY || 'runtime';
+const CLOUDBASE_SNAPSHOT_SLOTS = [`${CLOUDBASE_SNAPSHOT_KEY}_a`, `${CLOUDBASE_SNAPSHOT_KEY}_b`];
+
+let cloudbaseMysqlReady = false;
+let cloudbaseMysql = null;
+let cloudbaseSnapshotRevision = 0;
+
+function cloudbaseSdk() {
+  if (!USE_CLOUDBASE_MYSQL) return null;
+  try {
+    return require('@cloudbase/node-sdk');
+  } catch (e) {
+    console.error('[存储] 已配置 DB_MODE=cloudbase_mysql 但未安装 @cloudbase/node-sdk。');
+    return null;
+  }
+}
+
+function snapshotJson(revision) {
+  return JSON.stringify({
+    schema_version: 1,
+    revision,
+    db,
+    seq,
+  });
+}
+
+async function saveCloudBaseMysqlSnapshot() {
+  if (!cloudbaseMysql) throw new Error('CloudBase MySQL 网关尚未初始化');
+  const nextRevision = cloudbaseSnapshotRevision + 1;
+  const row = {
+    snapshot_key: CLOUDBASE_SNAPSHOT_SLOTS[nextRevision % 2],
+    payload: snapshotJson(nextRevision),
+    updated_at: new Date().toISOString().replace('T', ' ').replace('Z', '').replace(/\.\d+$/, ''),
+  };
+
+  // 网关偶发超时时重试一次；upsert 同一主键具备幂等性。
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await cloudbaseMysql
+        .from(CLOUDBASE_MYSQL_TABLE)
+        .upsert(row, { onConflict: 'snapshot_key' })
+        .throwOnError();
+      cloudbaseSnapshotRevision = nextRevision;
+      return;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
+async function loadFromCloudBaseMysql() {
+  if (!CLOUDBASE_ENV_ID) {
+    throw new Error('缺少 CLOUDBASE_ENV_ID 环境变量');
+  }
+
+  const sdk = cloudbaseSdk();
+  if (!sdk) throw new Error('CloudBase SDK 不可用');
+
+  const app = sdk.init({ env: CLOUDBASE_ENV_ID });
+  cloudbaseMysql = app.rdb();
+
+  const result = await cloudbaseMysql
+    .from(CLOUDBASE_MYSQL_TABLE)
+    .select('snapshot_key,payload')
+    .in('snapshot_key', CLOUDBASE_SNAPSHOT_SLOTS)
+    .throwOnError();
+
+  const snapshots = [];
+  for (const row of (result && Array.isArray(result.data) ? result.data : [])) {
+    if (!row || !row.payload) continue;
+    try {
+      const parsed = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+      if (parsed && parsed.db) snapshots.push(parsed);
+    } catch (e) {
+      console.warn(`[存储] 忽略无法解析的 MySQL 快照槽位: ${row.snapshot_key}`);
+    }
+  }
+  snapshots.sort((a, b) => Number(b.revision || 0) - Number(a.revision || 0));
+  const snapshot = snapshots[0];
+  if (snapshot) {
+    Object.assign(db, snapshot.db);
+    seq = snapshot.seq || {};
+    cloudbaseSnapshotRevision = Number(snapshot.revision || 0);
+    console.log('[存储] 已通过 CloudBase SDK 网关从 MySQL 加载快照。');
+    return;
+  }
+
+  seed();
+  await saveCloudBaseMysqlSnapshot();
+  console.log('[存储] MySQL 快照表为空，已通过 SDK 网关写入种子数据。');
 }
 
 const COLLECTIONS = [
@@ -366,11 +471,15 @@ async function flush(conn) {
 // 序列化的异步落库链，避免并发 flush 互相覆盖
 let saveChain = Promise.resolve();
 async function save() {
-  // 同步写文件作为兜底备份（即使 MySQL 失败也不丢）
+  // 同步写文件作为容器内临时兜底；持久数据仍以所选云存储为准。
   try { saveFile(); } catch (e) { /* ignore */ }
-  if (!mysqlReady) return;
+  if (!cloudbaseMysqlReady && !mysqlReady) return;
   saveChain = saveChain
     .then(async () => {
+      if (cloudbaseMysqlReady) {
+        await saveCloudBaseMysqlSnapshot();
+        return;
+      }
       const p = await getPool();
       if (!p) return;
       const conn = await p.getConnection();
@@ -380,13 +489,26 @@ async function save() {
         conn.release();
       }
     })
-    .catch((e) => console.error('[存储] MySQL 写入失败:', e.message));
+    .catch((e) => console.error('[存储] 云端写入失败:', e.message));
   return saveChain;
 }
 
 /* ----------------------------- 统一初始化入口 ----------------------------- */
 
 async function initStore() {
+  if (USE_CLOUDBASE_MYSQL) {
+    try {
+      if (!cloudbaseSdk()) throw new Error('CloudBase SDK 不可用');
+      await loadFromCloudBaseMysql();
+      cloudbaseMysqlReady = true;
+      console.log(`[存储] 使用 CloudBase MySQL SDK 网关: ${CLOUDBASE_ENV_ID}/${CLOUDBASE_MYSQL_TABLE}/${CLOUDBASE_SNAPSHOT_KEY}_{a,b}`);
+      return;
+    } catch (e) {
+      cloudbaseMysqlReady = false;
+      cloudbaseMysql = null;
+      throw new Error(`CloudBase MySQL SDK 网关初始化失败: ${e.message}`);
+    }
+  }
   if (USE_MYSQL && mysql2()) {
     try {
       pool = mysql2().createPool(DB_CFG);

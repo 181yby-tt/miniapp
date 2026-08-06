@@ -1,7 +1,7 @@
 {
   "name": "kexu-server",
   "version": "1.0.0",
-  "description": "课序 选课排课系统后端（文件模式 / MySQL 双持久化，详见 docs/schema.sql 与 docs/云托管部署指南.md）",
+  "description": "课序 选课排课系统后端（文件 / CloudBase MySQL SDK 网关 / MySQL 直连持久化）",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -14,6 +14,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@cloudbase/node-sdk": "^4.0.2",
     "mysql2": "^3.23.2"
   }
 }
