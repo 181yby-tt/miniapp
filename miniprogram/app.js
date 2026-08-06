@@ -1,7 +1,7 @@
 // app.js - 全局登录态与入口控制
 App({
   globalData: {
-    baseUrl: 'http://localhost:3000', // 真机/体验版请改为 https 域名，并在小程序后台配置服务器域名白名单
+    baseUrl: 'https://class-app-292687-5-1464295280.sh.run.tcloudbase.com',
   },
   onLaunch() {
     // 微信云托管：全局初始化一次（启用内网通道 wx.cloud.callContainer）。

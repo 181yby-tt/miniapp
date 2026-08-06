@@ -1,6 +1,7 @@
 // utils/request.js - 统一请求层
 // 双模式：本地 wx.request（模拟器联调） / 微信云托管 wx.cloud.callContainer（线上内网）
-const BASE_URL = 'http://localhost:3000';
+// CloudBase 云托管公网 HTTPS 地址。上线前需在微信公众平台加入 request 合法域名。
+const BASE_URL = 'https://class-app-292687-5-1464295280.sh.run.tcloudbase.com';
 const CLOUDRUN = require('../config/cloudrun');
 
 // 统一处理响应（两种模式共用）
