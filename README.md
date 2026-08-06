@@ -79,7 +79,7 @@ node server/smoke_mp.js      # 小程序页面接口冒烟（需后端在运行�
 docker build -t kexu-cloudbase .
 
 # 使用 CloudBase CLI 部署
-tcb cloudrun deploy -s kexu-backend --port 80 --source .
+tcb cloudrun deploy -s kexu-backend --port 8080 --source .
 ```
 
 生产环境至少配置以下环境变量，真实值只保存在 CloudBase 控制台，不要提交到 Git：
