@@ -8,11 +8,13 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=80
+ENV DATA_FILE=/tmp/kexu-data.json
 
 COPY --from=dependencies --chown=node:node /app/server/node_modules ./server/node_modules
 COPY --chown=node:node server/src ./server/src
 COPY --chown=node:node docs/schema.sql ./docs/schema.sql
 COPY --chown=node:node admin-console.html ./admin-console.html
+RUN chown -R node:node /app/server
 
 USER node
 EXPOSE 80
