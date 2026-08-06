@@ -1,4 +1,4 @@
-# 构建上下文必须是仓库根目录：docker build -f server/Dockerfile .
+# CloudBase Run 默认从仓库根目录构建。
 FROM node:22-alpine AS dependencies
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
