@@ -186,6 +186,15 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   KEY `idx_audit_actor` (`actor_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 免费版/个人版通过 CloudBase SDK 网关访问 MySQL 时使用。
+-- A/B 两个主键槽位轮换写入，单行 upsert 原子完成并保留上一份有效快照。
+CREATE TABLE IF NOT EXISTS `app_snapshots` (
+  `snapshot_key` VARCHAR(64) NOT NULL,
+  `payload` LONGTEXT NOT NULL,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`snapshot_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 初始化系统配置（仅作兜底；应用空库时会用内置种子覆盖）
 INSERT INTO `system_configs` (`config_key`,`config_value`,`value_type`) VALUES
   ('security.password_min_length','8','int'),
