@@ -355,7 +355,12 @@
 <div id="toast"></div>
 
 <script>
-const BASE = 'http://localhost:3000';
+// 生产环境由后端同源提供；保留 8080 静态预览时的本地 API 兼容。
+const BASE = window.KEXU_API_BASE || (
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1') && location.port !== '3000'
+    ? 'http://localhost:3000'
+    : ''
+);
 const STATUS_LABEL = { OPEN:'开放报名', DRAFT:'草稿', CLOSED:'已停止', FINISHED:'已结束', ARCHIVED:'已归档' };
 const ESTATUS_LABEL = { ENROLLED:'已报名', WITHDRAWN:'已退课', CANCELLED:'已取消' };
 let TOKEN = localStorage.getItem('kexu_admin_token') || '';

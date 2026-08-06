@@ -1,0 +1,15 @@
+.git
+.gitignore
+.DS_Store
+node_modules
+server/node_modules
+server/data.json
+server/data.json.*
+server/.env
+*.log
+*.bak
+miniprogram
+miniprogram-preview.html
+DELIVERY.md
+docs/*.md
+server/tools

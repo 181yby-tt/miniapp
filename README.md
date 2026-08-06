@@ -59,12 +59,49 @@ node src/server.js          # 监听 http://localhost:3000，首次启动自动�
 4. `utils/request.js` 中 `BASE_URL` 默认 `http://localhost:3000`；真机预览或上线时改为
    你已备案且加入小程序后台 **request 合法域名** 的 **HTTPS** 地址。
 
+管理后台在本地后端启动后可通过 `http://localhost:3000/admin` 访问。部署环境中管理后台与
+API 使用同一 HTTPS 域名，避免额外的静态站和跨域配置。
+
 ### 3. 跑测试
 
 ```bash
 node server/test.js          # 后端 12 项核心逻辑断言
 node server/smoke_mp.js      # 小程序页面接口冒烟（需后端在运行）
 ```
+
+### 4. 部署到 CloudBase Run
+
+仓库根目录提供了可直接构建的 `Dockerfile`。CloudBase Run 应以**仓库根目录**作为构建上下文，
+这样容器会同时包含 Node 后端、`docs/schema.sql` 和管理后台页面。
+
+```bash
+# 本地有 Docker 时可选做
+docker build -t kexu-cloudbase .
+
+# 使用 CloudBase CLI 部署
+tcb cloudrun deploy -s kexu-backend --port 80 --source .
+```
+
+生产环境至少配置以下环境变量，真实值只保存在 CloudBase 控制台，不要提交到 Git：
+
+```text
+APPID
+APPSECRET
+TOKEN_SECRET
+DB_HOST
+DB_PORT
+DB_USER
+DB_PASSWORD
+DB_NAME
+```
+
+部署成功后：
+
+- 健康检查：`https://<服务域名>/api/health`
+- 教务管理后台：`https://<服务域名>/admin`
+- 小程序 API：`https://<服务域名>/api/...`，或启用 `wx.cloud.callContainer`
+
+完整步骤见 [微信云托管部署指南](docs/云托管部署指南.md)。
 
 ---
 

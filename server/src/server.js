@@ -9,12 +9,15 @@
  */
 
 const http = require('http');
+const fs = require('fs');
+const pathlib = require('path');
 const { URL } = require('url');
 const { db, nextId, initStore, save } = require('./store');
 const { hashPassword, verifyPassword, sign, verify } = require('./auth');
 const { code2Session } = require('./config');
 
 const PORT = process.env.PORT || 3000;
+const ADMIN_CONSOLE_FILE = pathlib.resolve(__dirname, '..', '..', 'admin-console.html');
 
 // 异步初始化存储（MySQL 或文件模式），就绪后再监听端口
 const storeReady = initStore();
@@ -29,6 +32,20 @@ function send(res, status, body) {
 
 function ok(res, data) { send(res, 200, { code: 'OK', data }); }
 function fail(res, code, message, status = 400, details = {}) { send(res, status, { code, message, request_id: `req_${Date.now()}`, details }); }
+
+function sendAdminConsole(res) {
+  fs.readFile(ADMIN_CONSOLE_FILE, (err, html) => {
+    if (err) return fail(res, 'ADMIN_CONSOLE_UNAVAILABLE', '管理后台页面不可用', 503);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'same-origin',
+    });
+    res.end(html);
+  });
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -330,6 +347,10 @@ const server = http.createServer(async (req, res) => {
   const requireStaff = () => { if (!user || !['STAFF', 'SUPER_ADMIN'].includes(user.user_type)) { fail(res, 'FORBIDDEN', '无权访问', 403); return false; } return true; };
 
   // 公开
+  if (['/admin', '/admin/', '/admin-console.html'].includes(path) && method === 'GET') {
+    return sendAdminConsole(res);
+  }
+
   if (path === '/api/auth/login' && method === 'POST') {
     const u = db.users.find((x) => x.username === body.username);
     if (!u || !verifyPassword(body.password || '', u.password_hash)) return fail(res, 'INVALID_CREDENTIALS', '账号或密码不正确', 401);
@@ -568,7 +589,7 @@ const server = http.createServer(async (req, res) => {
   if (/^\/api\/admin\/courses\/\d+\/(open|close|archive)$/.test(path) && method === 'POST') {
     if (!requireStaff()) return;
     const id = Number(path.split('/')[4]);
-    const action = path.split('/')[4];
+    const action = path.split('/')[5];
     const course = getCourse(id);
     if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
     const before = { status: course.status };
