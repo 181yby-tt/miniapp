@@ -5,11 +5,11 @@ module.exports = {
   // 是否走云托管内网通道：
   //   false → 本地/模拟器联调用 wx.request（BASE_URL）
   //   true  → 线上用 wx.cloud.callContainer（微信内网，免备案/免证书/免白名单）
-  enabled: false,
+  enabled: true,
 
   // 微信云托管环境 ID（控制台「环境管理」获取，形如 prod-xxx）
-  env: 'prod-xxxx',
+  env: 'app-d2gqxo7iof3a0d7ce',
 
   // 服务名称（控制台「服务管理」新建服务时填写的名称，联调时作 X-WX-SERVICE）
-  service: 'kexu-backend',
+  service: 'class-app',
 };
