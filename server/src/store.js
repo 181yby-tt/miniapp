@@ -16,7 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const { hashPassword } = require('./auth');
 
-const DATA_FILE = path.join(__dirname, '..', 'data.json');
+// 容器环境可通过 DATA_FILE 指向可写的临时目录；生产数据仍应使用 MySQL 持久化。
+const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, '..', 'data.json');
 const SCHEMA_FILE = path.join(__dirname, '..', '..', 'docs', 'schema.sql');
 
 const db = {
