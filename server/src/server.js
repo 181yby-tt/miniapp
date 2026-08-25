@@ -18,6 +18,8 @@ const { code2Session } = require('./config');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_CONSOLE_FILE = pathlib.resolve(__dirname, '..', '..', 'admin-console.html');
+const WEB_DIST_DIR = pathlib.resolve(process.env.WEB_DIST_DIR || pathlib.join(__dirname, '..', '..', 'apps', 'web', 'dist'));
+const WEB_INDEX_FILE = pathlib.join(WEB_DIST_DIR, 'index.html');
 
 // 异步初始化存储（MySQL 或文件模式），就绪后再监听端口
 const storeReady = initStore();
@@ -45,6 +47,53 @@ function sendAdminConsole(res) {
     });
     res.end(html);
   });
+}
+
+const WEB_MIME_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
+};
+
+function sendWebFile(res, file, cacheControl) {
+  fs.readFile(file, (err, content) => {
+    if (err) {
+      res.writeHead(err.code === 'ENOENT' ? 404 : 503, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(err.code === 'ENOENT' ? 'Not found' : 'Web application unavailable');
+    }
+    res.writeHead(200, {
+      'Content-Type': WEB_MIME_TYPES[pathlib.extname(file).toLowerCase()] || 'application/octet-stream',
+      'Cache-Control': cacheControl,
+      'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+      'Referrer-Policy': 'same-origin',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+    });
+    return res.end(content);
+  });
+}
+
+function sendWebApp(res, requestPath) {
+  const isBundledAsset = requestPath.startsWith('/assets/');
+  const isPublicFile = Boolean(pathlib.extname(requestPath));
+  if (isBundledAsset || isPublicFile) {
+    const relative = requestPath.replace(/^\/+/, '');
+    const file = pathlib.resolve(WEB_DIST_DIR, relative);
+    if (!file.startsWith(`${WEB_DIST_DIR}${pathlib.sep}`)) {
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Bad request');
+    }
+    return sendWebFile(res, file, isBundledAsset ? 'public, max-age=31536000, immutable' : 'public, max-age=86400');
+  }
+  return sendWebFile(res, WEB_INDEX_FILE, 'no-cache');
 }
 
 function readBody(req) {
@@ -347,7 +396,7 @@ const server = http.createServer(async (req, res) => {
   const requireStaff = () => { if (!user || !['STAFF', 'SUPER_ADMIN'].includes(user.user_type)) { fail(res, 'FORBIDDEN', '无权访问', 403); return false; } return true; };
 
   // 公开
-  if (['/admin', '/admin/', '/admin-console.html'].includes(path) && method === 'GET') {
+  if (['/admin-console.html', '/admin/legacy'].includes(path) && method === 'GET') {
     return sendAdminConsole(res);
   }
 
@@ -411,8 +460,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (path === '/api/health' && method === 'GET') return ok(res, { status: 'up' });
-  // 云托管健康检查：根路径返回 200，避免平台 HTTP 探活误判
-  if (path === '/' && method === 'GET') return ok(res, { status: 'up', service: 'kexu-server' });
+
+  // 学生端与管理端共用同一个 SPA，使用路由区分；API 仍由当前服务直接提供。
+  if (method === 'GET' && !path.startsWith('/api/')) return sendWebApp(res, path);
 
   if (!requireUser()) return;
 
