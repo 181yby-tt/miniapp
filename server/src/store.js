@@ -415,7 +415,20 @@ async function loadFromMysql() {
   const p = await getPool();
   if (!p) throw new Error('连接池不可用');
 
-  // 1) 建表（幂等）
+  // 1) 兼容旧库迁移，再建表（MySQL 不支持 ADD COLUMN IF NOT EXISTS）
+  const [userTables] = await p.query(
+    "SELECT 1 FROM `information_schema`.`tables` WHERE `table_schema`=? AND `table_name`='users' LIMIT 1",
+    [DB_CFG.database],
+  );
+  if (userTables.length) {
+    const [displayNameColumns] = await p.query(
+      "SELECT 1 FROM `information_schema`.`columns` WHERE `table_schema`=? AND `table_name`='users' AND `column_name`='display_name' LIMIT 1",
+      [DB_CFG.database],
+    );
+    if (!displayNameColumns.length) {
+      await p.query("ALTER TABLE `users` ADD COLUMN `display_name` VARCHAR(64) NOT NULL DEFAULT '' AFTER `username`");
+    }
+  }
   const schema = fs.readFileSync(SCHEMA_FILE, 'utf8');
   await p.query(schema);
 

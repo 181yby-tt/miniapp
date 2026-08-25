@@ -25,9 +25,6 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `uk_openid` (`wechat_openid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-ALTER TABLE `users`
-  ADD COLUMN IF NOT EXISTS `display_name` VARCHAR(64) NOT NULL DEFAULT '' AFTER `username`;
-
 CREATE TABLE IF NOT EXISTS `grades` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(32) NOT NULL,
