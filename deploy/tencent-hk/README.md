@@ -96,3 +96,16 @@ docker compose exec -T mysql sh -c 'exec mysqldump -ukexu -p"$MYSQL_PASSWORD" ke
 ```
 
 备份文件应复制到另一台机器或对象存储，不能只保留在当前服务器。
+
+## 正式使用前清除演示数据
+
+仓库内置的课程、学生、教师和报名仅用于验收。不要使用 `server/tools/reset.js` 清理生产库，
+因为它会在下次启动时重新生成演示数据。服务器上请使用：
+
+```bash
+cd /home/ubuntu/miniapp/deploy/tencent-hk
+./clear-demo-data.sh --confirm-clear-demo-data
+```
+
+脚本会先停止应用写入并备份 MySQL，然后一次清除学生、教师、课程、排课、报名和基础资料；
+管理员账号与系统规则会保留。清理后依次维护基础资料、导入学生，再导入课程。
