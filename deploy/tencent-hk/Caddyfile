@@ -1,0 +1,15 @@
+{$SITE_ADDRESS::80} {
+  encode zstd gzip
+  reverse_proxy app:8080
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+
+  log {
+    output stdout
+    format console
+  }
+}

@@ -1,4 +1,3 @@
-# Web 构建：学生端与管理后台共用同一个 Vite/React 产物。
 FROM node:22-alpine AS web-build
 WORKDIR /app
 ARG PUBLIC_ORIGIN=""
@@ -12,11 +11,11 @@ COPY apps/web ./apps/web
 COPY packages/client-core ./packages/client-core
 RUN npm run build:web
 
-# CloudBase Run / 腾讯云容器默认从仓库根目录构建。
 FROM node:22-alpine AS dependencies
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+# 香港 Web 部署只用 MySQL 直连，不安装 CloudBase SDK 及其旧版 axios 依赖。
+RUN npm ci --omit=dev --omit=optional --no-audit --no-fund
 
 FROM node:22-alpine
 WORKDIR /app
@@ -29,11 +28,10 @@ COPY --from=web-build --chown=node:node /app/apps/web/dist ./apps/web/dist
 COPY --chown=node:node server/src ./server/src
 COPY --chown=node:node docs/schema.sql ./docs/schema.sql
 COPY --chown=node:node admin-console.html ./admin-console.html
-RUN chown -R node:node /app/server
 
 USER node
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD wget -qO- http://127.0.0.1:${PORT:-8080}/api/health || exit 1
 
 CMD ["node", "server/src/server.js"]

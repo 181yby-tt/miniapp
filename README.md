@@ -1,10 +1,10 @@
-# 课序 · 校本选课排课系统（学生微信小程序 + 后端）
+# 课序 · 校本选课排课系统（统一 Web + 微信小程序 + 后端）
 
-铁英中学选课排课系统的**可运行核心闭环**：原生微信小程序（学生端） + 零依赖 Node 后端，
+铁英中学选课排课系统的**可运行核心闭环**：响应式 Web（学生端 + 教务后台）+ 原生微信小程序 + Node 后端，
 覆盖方案 / PRD / 技术方案中定义的关键能力——课程浏览、报名、退课、我的课表、个人中心，
 以及后端最难的两件事：**报名并发不超卖** 与 **时间/教师/场地硬冲突校验 + 幂等**。
 
-> 教务管理后台（Web）已包含在 `admin-console.html`（单文件 SPA，直接对接真实后端）。
+> 正式 Web 入口位于 `apps/web`，学生端和教务后台共用一个 React 构建产物，通过 `/admin/*` 路由区分；`admin-console.html` 仅保留为旧版迁移参考。
 > 学生端已接入**真实微信登录**：`wx.login` → 后端 `code2Session` 换 `openid` → 首次绑定学号 → 之后一键登录。
 
 **AppID**：通过环境变量 `APPID` 注入（见 `server/.env.example`）；`miniprogram/project.config.json` 中已置为 `touristappid` 占位，导入开发者工具后请替换为你自己的 AppID。
@@ -18,6 +18,8 @@
 
 ```
 kexu/
+├── apps/web/               # 统一 Web：手机 H5 + PC + /admin/* 教务后台
+├── packages/client-core/   # 跨端 API、会话与课程/课表视图模型
 ├── server/                 # 零依赖 Node HTTP 后端（端口 3000）
 │   ├── src/
 │   │   ├── server.js       # 路由 + 报名事务 + 冲突校验 + 幂等
@@ -40,18 +42,26 @@ kexu/
 
 ## 快速开始
 
-### 1. 启动后端
+### 1. 安装依赖
 
 ```bash
-cd server
-node src/server.js          # 监听 http://localhost:3000，首次启动自动生成种子数据
+npm install
+```
+
+### 2. 启动后端与 Web
+
+```bash
+npm start --workspace kexu-server  # API：http://localhost:3000
+npm run dev:web                  # Web：http://localhost:5173
 ```
 
 演示账号：
 - 管理员：`admin` / `demo123456`（首次登录需改密）
 - 学生（学号即账号）：`20260108`（林晓雨）/ `123456`（首次登录需改密）
 
-### 2. 打开小程序
+统一 Web 登录后会根据账号角色自动进入学生端或 `/admin` 教务后台。
+
+### 3. 打开小程序
 
 1. 用微信开发者工具「导入项目」，目录选择 `kexu/miniprogram`。
 2. AppID 可填测试号（或你自己的）。
@@ -62,14 +72,14 @@ node src/server.js          # 监听 http://localhost:3000，首次启动自动�
 管理后台在本地后端启动后可通过 `http://localhost:3000/admin` 访问。部署环境中管理后台与
 API 使用同一 HTTPS 域名，避免额外的静态站和跨域配置。
 
-### 3. 跑测试
+### 4. 跑测试与构建
 
 ```bash
-node server/test.js          # 后端 12 项核心逻辑断言
-node server/smoke_mp.js      # 小程序页面接口冒烟（需后端在运行）
+npm test
+npm run build:web
 ```
 
-### 4. 部署到 CloudBase Run
+### 5. 部署
 
 仓库根目录提供了可直接构建的 `Dockerfile`。CloudBase Run 应以**仓库根目录**作为构建上下文，
 这样容器会同时包含 Node 后端、`docs/schema.sql` 和管理后台页面。
@@ -98,10 +108,15 @@ DB_NAME
 部署成功后：
 
 - 健康检查：`https://<服务域名>/api/health`
+- 统一 Web：`https://<服务域名>/`
 - 教务管理后台：`https://<服务域名>/admin`
 - 小程序 API：`https://<服务域名>/api/...`，或启用 `wx.cloud.callContainer`
 
 完整步骤见 [微信云托管部署指南](docs/云托管部署指南.md)。
+
+腾讯云香港服务器 + 自有域名的单机部署见 [deploy/tencent-hk/README.md](deploy/tencent-hk/README.md)。
+
+共享核心和手机/PC/小程序适配边界见 [Web 架构与端适配](docs/Web架构与端适配.md)。
 
 ---
 

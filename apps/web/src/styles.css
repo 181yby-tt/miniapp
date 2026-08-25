@@ -1,0 +1,233 @@
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: #17342d;
+  background: #f4f1e8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input { font: inherit; }
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, .92fr);
+  background: #f8f5ed;
+}
+
+.brand-panel {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(42px, 7vw, 104px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 60px;
+  color: #f7f2e6;
+  background:
+    radial-gradient(circle at 85% 14%, rgba(235, 186, 88, .42) 0 6%, transparent 6.3%),
+    radial-gradient(circle at 86% 15%, transparent 0 14%, rgba(255,255,255,.12) 14.3% 14.7%, transparent 15%),
+    linear-gradient(145deg, #173a32 0%, #265849 58%, #b5673e 150%);
+}
+
+.brand-panel::after {
+  content: "选";
+  position: absolute;
+  right: -2vw;
+  bottom: -9vw;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: clamp(220px, 34vw, 520px);
+  line-height: 1;
+  color: rgba(255,255,255,.035);
+}
+
+.brand-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.48);
+  border-radius: 50%;
+  font: 700 30px/1 "Songti SC", serif;
+}
+
+.eyebrow {
+  margin: 0 0 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+
+.brand-panel h1 {
+  max-width: 720px;
+  margin: 0;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: clamp(52px, 7vw, 104px);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -.05em;
+}
+
+.brand-copy {
+  max-width: 560px;
+  margin: 32px 0 0;
+  color: rgba(255,255,255,.76);
+  font-size: 17px;
+  line-height: 1.9;
+}
+
+.brand-meta { display: flex; flex-wrap: wrap; gap: 12px; z-index: 1; }
+.brand-meta span { padding: 8px 14px; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; font-size: 13px; }
+
+.login-panel { display: grid; place-items: center; padding: clamp(32px, 6vw, 90px); }
+.login-card { width: min(100%, 440px); }
+.login-card h2 { margin: 0; font: 600 clamp(38px, 4vw, 58px)/1.08 "Songti SC", "STSong", serif; color: #17342d; }
+.login-intro { margin: 14px 0 42px; color: #738078; }
+.login-card label { display: grid; gap: 10px; margin: 0 0 22px; color: #344c45; font-size: 14px; font-weight: 650; }
+.login-card input { width: 100%; border: 0; border-bottom: 1px solid #bdc5bd; padding: 14px 2px; outline: none; background: transparent; color: #17342d; font-size: 17px; transition: border-color .2s; }
+.login-card input:focus { border-bottom-color: #b86138; }
+.login-card input::placeholder { color: #a2aaa3; }
+.form-error { margin: -4px 0 18px; color: #a63e2d; font-size: 14px; }
+.primary-button { width: 100%; border: 0; border-radius: 2px; padding: 17px 22px; color: #fff; background: #b86138; font-weight: 700; cursor: pointer; transition: transform .16s, background .16s; }
+.primary-button:hover { background: #a9512c; transform: translateY(-1px); }
+.primary-button:disabled { opacity: .65; cursor: wait; }
+.login-note { margin: 18px 0 0; color: #89928c; font-size: 12px; line-height: 1.7; text-align: center; }
+.product-shell { min-height: 100vh; background: #f6f3eb; }
+.side-rail { position: fixed; inset: 0 auto 0 0; width: 250px; z-index: 20; display: flex; flex-direction: column; padding: 28px 20px 20px; color: #f8f4e8; background: #183a32; }
+.logo-button { width: 48px; height: 48px; border: 1px solid rgba(255,255,255,.38); border-radius: 50%; color: #fff; background: transparent; font: 700 23px/1 "Songti SC", serif; cursor: pointer; }
+.rail-brand { margin: 26px 4px 34px; display: grid; gap: 3px; }
+.rail-brand strong { font: 600 27px/1.2 "Songti SC", serif; letter-spacing: .08em; }
+.rail-brand span { color: rgba(255,255,255,.55); font-size: 11px; letter-spacing: .14em; }
+.primary-nav { display: grid; gap: 7px; }
+.primary-nav button { display: flex; align-items: center; gap: 13px; width: 100%; padding: 12px 13px; border: 0; border-radius: 9px; color: rgba(255,255,255,.68); background: transparent; font-weight: 650; text-align: left; cursor: pointer; }
+.primary-nav button span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 7px; color: rgba(255,255,255,.72); background: rgba(255,255,255,.08); font-size: 12px; }
+.primary-nav button:hover, .primary-nav button.active { color: #fff; background: rgba(255,255,255,.11); }
+.primary-nav button.active span { color: #173a32; background: #e9b963; }
+.rail-account { margin-top: auto; padding: 16px 4px 0; border-top: 1px solid rgba(255,255,255,.12); display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; }
+.account-avatar { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; color: #183a32; background: #f1c677; font-weight: 800; }
+.rail-account div { min-width: 0; display: grid; }
+.rail-account strong { overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.rail-account small { color: rgba(255,255,255,.52); font-size: 10px; }
+.logout-icon { border: 0; padding: 4px; color: rgba(255,255,255,.55); background: transparent; font-size: 11px; cursor: pointer; }
+.content-column { min-height: 100vh; margin-left: 250px; }
+.page-content { width: min(1220px, calc(100% - 72px)); margin: 0 auto; padding: 56px 0 88px; }
+.mobile-nav { display: none; }
+.page-header { min-height: 126px; margin-bottom: 34px; display: flex; justify-content: space-between; gap: 30px; align-items: flex-end; border-bottom: 1px solid #d9d4c6; padding-bottom: 26px; }
+.page-header h1 { margin: 0; color: #172f2a; font: 600 clamp(42px, 5vw, 68px)/.98 "Songti SC", "STSong", serif; letter-spacing: -.045em; }
+.eyebrow.ink { color: #a05a36; }
+.page-description { max-width: 650px; margin: 14px 0 0; color: #748078; font-size: 14px; line-height: 1.7; }
+.page-action { flex: none; }
+.metric-grid { display: grid; gap: 1px; overflow: hidden; border: 1px solid #ded8ca; background: #ded8ca; }
+.compact-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 30px; }
+.admin-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 28px; }
+.metric { min-height: 118px; padding: 24px 26px; background: #fffdf7; }
+.metric > div { display: flex; align-items: baseline; gap: 5px; }
+.metric strong { color: #183a32; font: 600 39px/1 "Songti SC", serif; }
+.metric > div span { color: #8d968f; font-size: 15px; }
+.metric p { margin: 14px 0 0; color: #7f887f; font-size: 12px; letter-spacing: .06em; }
+.metric.accent { background: #ead6b0; }
+.toolbar-line { margin: 24px 0 18px; display: flex; align-items: center; gap: 14px; }
+.search-box { min-width: 260px; flex: 1; position: relative; }
+.search-box > span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #a0a79f; font-size: 11px; }
+.search-box input { width: 100%; height: 46px; border: 1px solid #d8d4c8; border-radius: 4px; outline: 0; padding: 0 16px 0 42px; color: #17342d; background: #fffdf8; }
+.search-box input:focus { border-color: #b86138; box-shadow: 0 0 0 3px rgba(184,97,56,.08); }
+.filter-toggle { height: 46px; border: 1px solid #d8d4c8; border-radius: 4px; padding: 0 18px; color: #5f6962; background: #fffdf8; cursor: pointer; }
+.filter-toggle.active { color: #fff; border-color: #183a32; background: #183a32; }
+.toolbar-count { color: #7e877f; font-size: 13px; }
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+.chip-row.inline { margin: 0; }
+.chip-row button { border: 1px solid #d9d3c5; border-radius: 999px; padding: 8px 14px; color: #667168; background: transparent; font-size: 12px; cursor: pointer; }
+.chip-row button.active { color: #fff; border-color: #b86138; background: #b86138; }
+.chip-row button .status-pill { padding: 0; color: inherit; background: transparent; }
+.course-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.course-card { min-width: 0; display: flex; gap: 18px; padding: 22px; border: 1px solid #e0dbcf; border-radius: 6px; background: #fffdf8; box-shadow: 0 9px 26px rgba(43,55,48,.045); cursor: pointer; transition: transform .16s, box-shadow .16s; }
+.course-card:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(43,55,48,.08); }
+.course-mark { width: 66px; height: 66px; flex: none; display: grid; place-items: center; border-radius: 5px; font: 700 28px/1 "Songti SC", serif; }
+.course-card-main { flex: 1; min-width: 0; }
+.course-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.course-category { display: inline-block; padding: 4px 8px; border-radius: 2px; font-size: 10px; font-weight: 750; letter-spacing: .09em; }
+.course-card h3 { margin: 8px 0 0; color: #20322d; font-size: 20px; line-height: 1.3; }
+.small-action { flex: none; border: 0; border-radius: 3px; padding: 8px 13px; color: #fff; background: #b86138; font-size: 12px; font-weight: 750; cursor: pointer; }
+.small-action:disabled { color: #929a94; background: #edece7; cursor: default; }
+.small-action.success { color: #296c4a; background: #dfefe3; }
+.course-meta { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 5px 13px; color: #68736b; font-size: 12px; }
+.course-description { min-height: 40px; margin: 12px 0 0; color: #8a918b; font-size: 12px; line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.seat-row { margin-top: 16px; display: flex; gap: 13px; align-items: center; }
+.seat-track { height: 5px; flex: 1; overflow: hidden; border-radius: 99px; background: #ece8de; }
+.seat-track i { display: block; height: 100%; border-radius: inherit; background: #417a68; }
+.seat-row > span { flex: none; color: #899089; font-size: 11px; }
+.seat-row b.low { color: #b64c37; }
+.tone-mint { background: #dcecdf; color: #286d49; }.tone-blue { background: #dfe8f4; color: #315f8c; }.tone-amber { background: #f2e5c7; color: #8b650f; }.tone-violet { background: #e8e0ee; color: #6b4f83; }.tone-coral { background: #f3ddd4; color: #a04d31; }.tone-navy { background: #dce6e9; color: #315d68; }
+.tone-surface-mint { background: #dcecdf; }.tone-surface-blue { background: #dfe8f4; }.tone-surface-amber { background: #f2e5c7; }.tone-surface-violet { background: #e8e0ee; }.tone-surface-coral { background: #f3ddd4; }.tone-surface-navy { background: #dce6e9; }
+.state-card, .empty-state { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 1px dashed #d5d0c4; color: #7e877f; background: rgba(255,253,248,.55); text-align: center; }
+.empty-state strong { color: #3f514a; font: 600 22px/1.3 "Songti SC", serif; }.empty-state p { max-width: 430px; margin: 0; font-size: 13px; line-height: 1.7; }
+.spinner { width: 24px; height: 24px; border: 2px solid #d9d4c8; border-top-color: #b86138; border-radius: 50%; animation: spin .7s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+.text-button { border: 0; color: #a14f2d; background: transparent; font-weight: 700; cursor: pointer; }.text-button.full { width: 100%; margin-top: 12px; padding: 10px; }
+.paper-card { border: 1px solid #dfd9cd; padding: 26px; background: #fffdf8; }
+.paper-card h2 { margin: 0; color: #213832; font: 600 26px/1.2 "Songti SC", serif; }
+.back-button { margin-bottom: 20px; border: 0; padding: 0; color: #68766e; background: transparent; cursor: pointer; }
+.detail-hero { min-height: 230px; display: flex; align-items: center; gap: 28px; padding: clamp(28px, 5vw, 58px); }
+.detail-mark { width: 100px; height: 100px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.8); font: 700 44px/1 "Songti SC", serif; }
+.detail-hero > div:last-child > span:first-child { font-size: 12px; font-weight: 750; letter-spacing: .12em; }
+.detail-hero h1 { margin: 10px 0 16px; font: 600 clamp(42px, 6vw, 76px)/1 "Songti SC", serif; }
+.detail-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 18px; margin-top: 18px; }
+.detail-facts dl, .profile-facts dl { margin: 24px 0 0; }.detail-facts dl div, .profile-facts dl div { display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px dotted #d5d0c5; }.detail-facts dt, .profile-facts dt { color: #899087; }.detail-facts dd, .profile-facts dd { margin: 0 0 0 auto; color: #273d36; font-weight: 700; text-align: right; }.detail-facts dd.good { color: #28704c; }.detail-facts dd.bad { color: #ad4834; }
+.detail-description > p { color: #606c64; line-height: 1.9; white-space: pre-wrap; }.inline-alert { margin-top: 24px; padding: 14px 16px; border-left: 3px solid #b86138; color: #854026; background: #f7e7df; font-size: 13px; }
+.detail-actions { display: flex; justify-content: flex-end; margin-top: 18px; }.detail-actions button { width: min(100%, 420px); }.danger-button { border: 1px solid #d9a797; padding: 16px 22px; color: #a6432f; background: #f8e6df; font-weight: 750; cursor: pointer; }
+.enrollment-wrap { position: relative; }.enrollment-wrap .course-card { height: 100%; }.danger-link { position: absolute; right: 22px; bottom: 18px; border: 0; color: #ad4934; background: transparent; font-size: 12px; cursor: pointer; }
+.history-section { margin-top: 38px; }.history-section h2 { font: 600 28px/1.2 "Songti SC", serif; }.history-row { display: grid; grid-template-columns: 1fr auto 150px; gap: 18px; align-items: center; padding: 14px 0; border-bottom: 1px solid #ddd8cc; }.history-row > span:last-child { color: #8b938d; font-size: 12px; text-align: right; }
+.status-pill { display: inline-flex; width: fit-content; border-radius: 999px; padding: 5px 9px; color: #61706a; background: #ecece7; font-size: 10px; font-weight: 750; white-space: nowrap; }.status-OPEN,.status-ENROLLED,.status-ACTIVE { color: #286b49; background: #deeee2; }.status-DRAFT { color: #7b6f54; background: #eee9dc; }.status-CLOSED,.status-CANCELLED { color: #9a6324; background: #f3e7ce; }.status-ARCHIVED,.status-FINISHED,.status-WITHDRAWN,.status-DISABLED { color: #737a77; background: #e7e9e7; }
+.segmented { display: flex; padding: 3px; background: #e9e5db; }.segmented button { border: 0; padding: 8px 16px; color: #737c75; background: transparent; cursor: pointer; }.segmented button.active { color: #fff; background: #183a32; }
+.schedule-scroll { overflow-x: auto; border: 1px solid #ddd8cc; background: #fffdf8; }.schedule-grid { min-width: 760px; display: grid; grid-template-columns: 76px repeat(5, minmax(126px, 1fr)); }.schedule-head,.period-cell,.schedule-cell { min-height: 84px; border-right: 1px solid #e4dfd4; border-bottom: 1px solid #e4dfd4; }.schedule-head { min-height: 52px; display: grid; place-items: center; color: #637068; background: #ece8de; font-size: 12px; font-weight: 750; }.period-cell { display: grid; place-items: center; color: #7b837d; font-size: 11px; }.schedule-cell { border-top: 0; border-left: 0; padding: 10px; text-align: left; cursor: pointer; }.schedule-cell:disabled { background: #fffdf8; cursor: default; }.schedule-cell strong,.schedule-cell span { display: block; }.schedule-cell strong { font-size: 12px; }.schedule-cell span { margin-top: 6px; font-size: 10px; opacity: .72; }
+.schedule-list { display: grid; gap: 10px; }.schedule-list > button { display: grid; grid-template-columns: 100px 1fr; gap: 18px; align-items: center; border: 1px solid #ded9cd; padding: 14px; background: #fffdf8; text-align: left; cursor: pointer; }.schedule-list > button > span { display: grid; gap: 3px; }.schedule-list small { color: #7d877f; }.list-day { padding: 10px; }
+.profile-layout { display: grid; grid-template-columns: .75fr 1.25fr; gap: 18px; }.profile-hero { min-height: 300px; display: flex; flex-direction: column; justify-content: flex-end; gap: 20px; padding: 28px; color: #fff; background: linear-gradient(145deg,#183a32,#376958); }.profile-hero > span { width: 78px; height: 78px; display: grid; place-items: center; border-radius: 50%; color: #183a32; background: #e9ba66; font: 700 34px/1 "Songti SC", serif; }.profile-hero h2 { margin: 0; font: 600 40px/1 "Songti SC", serif; }.profile-hero p { margin: 8px 0 0; color: rgba(255,255,255,.66); }.row-button { width: 100%; display: flex; justify-content: space-between; border: 0; border-bottom: 1px solid #e1dcd0; padding: 18px 0; color: #314840; background: transparent; font-weight: 700; cursor: pointer; }.row-button.danger { color: #a54b35; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }.span-two { grid-column: 1 / -1; }.card-title { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 22px; }.card-title > span { color: #818a83; font-size: 12px; }.fill-row { margin: 16px 0; }.fill-row > div:first-child { display: flex; justify-content: space-between; margin-bottom: 8px; }.fill-row span { color: #8b938d; font-size: 11px; }.signal-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 1px; background: #dfd9cd; }.signal-grid div { min-height: 100px; padding: 20px; display: grid; align-content: center; background: #f8f5ed; }.signal-grid strong { font: 600 31px/1 "Songti SC",serif; }.signal-grid span { margin-top: 8px; color: #7d867f; font-size: 11px; }
+.data-table,.responsive-table { border: 1px solid #ded9cd; background: #fffdf8; }.table-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; align-items: center; min-height: 58px; padding: 10px 16px; border-bottom: 1px solid #e8e3d9; font-size: 12px; }.table-row:last-child { border-bottom: 0; }.table-row > span { min-width: 0; display: grid; gap: 3px; }.table-row small { color: #929992; }.table-head { min-height: 42px; color: #78827b; background: #eeebe3; font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.responsive-table .table-row { grid-template-columns: 1.3fr 1.2fr .8fr .8fr; }.enrollment-table .table-row { grid-template-columns: 1.3fr 1fr .7fr .8fr .9fr; }
+.admin-course-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }.admin-course-card { border: 1px solid #dfdacf; padding: 20px; background: #fffdf8; }.admin-course-top { display: flex; justify-content: space-between; gap: 18px; }.admin-course-top h2 { margin: 10px 0 6px; font: 600 24px/1.2 "Songti SC",serif; }.admin-course-top p { margin: 0 0 18px; color: #7f8881; font-size: 11px; line-height: 1.5; }.admin-course-top > strong { font: 600 30px/1 "Songti SC",serif; white-space: nowrap; }.admin-course-top > strong small { color: #8a928c; font-size: 12px; }.card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }.card-actions button,.primary-compact { border: 1px solid #c9cec9; padding: 7px 10px; color: #4e5e56; background: transparent; font-size: 11px; cursor: pointer; }.card-actions button:disabled { opacity: .45; cursor: default; }.primary-compact { color: #fff; border-color: #183a32; background: #183a32; }
+.settings-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 18px; }.config-list { display: grid; gap: 14px; }.config-list label { display: grid; grid-template-columns: 1fr 130px; gap: 14px; align-items: center; }.config-list label span { display: grid; }.config-list small { color: #969c97; }.config-list input { width: 100%; border: 1px solid #d4d5ce; padding: 9px; background: #faf8f2; }.audit-list { max-height: 520px; overflow: auto; }.audit-list > div { display: flex; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid #e5e0d6; }.audit-list > div > span { display: grid; }.audit-list small,.audit-list time { color: #8c948e; font-size: 10px; }
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 100; max-width: min(420px,calc(100vw - 40px)); padding: 13px 17px; color: #fff; background: #183a32; box-shadow: 0 16px 38px rgba(24,58,50,.25); font-size: 13px; }.toast.error { background: #9d442f; }
+.password-page { min-height: 100vh; display: grid; place-items: center; padding: 28px; background: #f5f1e7; }.password-card { width: min(100%,460px); border: 1px solid #ded7c8; padding: clamp(28px,5vw,52px); background: #fffdf8; }.brand-mark.dark { margin-bottom: 28px; color: #fff; border-color: #183a32; background: #183a32; }.password-card h1 { margin: 0; font: 600 38px/1.12 "Songti SC",serif; }.password-card > p:not(.eyebrow) { color: #7c857f; line-height: 1.7; }.password-card label { display: grid; gap: 7px; margin-top: 18px; font-size: 12px; font-weight: 750; }.password-card input { border: 1px solid #d6d3ca; padding: 12px; background: #faf8f2; }
+
+@media (max-width: 820px) {
+  .login-page { grid-template-columns: 1fr; }
+  .brand-panel { min-height: 42vh; padding: 30px 26px 38px; gap: 38px; }
+  .brand-panel h1 { max-width: 520px; font-size: clamp(42px, 12vw, 72px); }
+  .brand-copy { display: none; }
+  .brand-mark { width: 52px; height: 52px; font-size: 25px; }
+  .login-panel { place-items: start stretch; padding: 38px 26px 52px; }
+  .login-card { margin: 0 auto; }
+  .side-rail { display: none; }
+  .content-column { margin-left: 0; }
+  .page-content { width: auto; padding: 26px 18px 100px; }
+  .mobile-nav { position: fixed; inset: auto 0 0; z-index: 30; display: grid; grid-template-columns: repeat(5,1fr); min-height: 68px; padding: 7px max(8px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top: 1px solid #ded8ca; background: rgba(255,253,248,.96); backdrop-filter: blur(16px); }
+  .mobile-nav button { min-width: 0; border: 0; display: grid; place-items: center; gap: 3px; color: #89928c; background: transparent; }
+  .mobile-nav button > span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; font-size: 11px; }
+  .mobile-nav button small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+  .mobile-nav button.active { color: #a3512f; }.mobile-nav button.active > span { color: #fff; background: #b86138; }
+  .page-header { min-height: 104px; margin-bottom: 24px; align-items: flex-start; padding-bottom: 20px; }
+  .page-header h1 { font-size: 42px; }
+  .page-description { font-size: 12px; }
+  .compact-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }.admin-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .metric { min-height: 94px; padding: 17px 14px; }.metric strong { font-size: 29px; }.metric p { margin-top: 10px; font-size: 10px; }
+  .toolbar-line { align-items: stretch; flex-direction: column; }.filter-toggle { width: 100%; }.chip-row.inline { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
+  .course-grid,.admin-course-grid,.dashboard-grid,.settings-grid,.profile-layout,.detail-grid { grid-template-columns: 1fr; }.span-two { grid-column: auto; }
+  .course-card { padding: 16px; gap: 13px; }.course-mark { width: 50px; height: 50px; font-size: 22px; }.course-card h3 { font-size: 17px; }.course-description { min-height: auto; }.small-action { padding: 7px 10px; }
+  .detail-hero { min-height: 190px; padding: 26px 20px; }.detail-mark { width: 72px; height: 72px; font-size: 32px; }.detail-hero h1 { font-size: 40px; }.detail-actions { position: sticky; bottom: 78px; z-index: 8; padding: 10px; margin-inline: -10px; background: rgba(246,243,235,.94); backdrop-filter: blur(12px); }.detail-actions button { width: 100%; }
+  .history-row { grid-template-columns: 1fr auto; }.history-row > span:last-child { grid-column: 1/-1; text-align: left; }
+  .page-action { align-self: flex-end; }.segmented button { padding: 7px 10px; font-size: 11px; }
+  .responsive-table { border: 0; background: transparent; }.responsive-table .table-head { display: none; }.responsive-table .table-row,.enrollment-table .table-row { grid-template-columns: repeat(2,1fr); margin-bottom: 10px; border: 1px solid #dfd9cd; padding: 14px; background: #fffdf8; }.enrollment-table .table-row > span:first-child { grid-column: 1/-1; }
+  .config-list label { grid-template-columns: 1fr; }.toast { right: 20px; bottom: 88px; }
+}
+
+@media (max-width: 480px) {
+  .brand-panel { min-height: 36vh; }
+  .brand-meta { display: none; }
+  .login-panel { padding-top: 30px; }
+  .login-card h2 { font-size: 36px; }
+  .compact-metrics { grid-template-columns: repeat(2,1fr); }.compact-metrics .metric:last-child { display: none; }
+  .course-card { align-items: flex-start; }.course-mark { width: 42px; height: 42px; }.course-meta { display: grid; }.page-action { display: none; }
+}

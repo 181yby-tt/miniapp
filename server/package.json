@@ -14,7 +14,9 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@cloudbase/node-sdk": "^4.0.2",
     "mysql2": "^3.23.2"
+  },
+  "optionalDependencies": {
+    "@cloudbase/node-sdk": "^4.0.2"
   }
 }
