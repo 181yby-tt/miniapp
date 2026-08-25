@@ -10,6 +10,7 @@
     "dev:web": "npm run dev --workspace @kexu/web",
     "build:web": "npm run build --workspace @kexu/web",
     "test:core": "npm test --workspace @kexu/client-core",
-    "test": "npm run test:core"
+    "test:web": "node --test apps/web/test/*.test.js",
+    "test": "npm run test:core && npm run test:web"
   }
 }

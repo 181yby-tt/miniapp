@@ -687,6 +687,94 @@ const server = http.createServer(async (req, res) => {
     return ok(res, { items });
   }
 
+  if (path === '/api/admin/students/import' && method === 'POST') {
+    if (!requireStaff()) return;
+    const rawRows = Array.isArray(body.rows) ? body.rows : [];
+    if (!rawRows.length) return fail(res, 'EMPTY_IMPORT', '没有可导入的学生数据');
+    if (rawRows.length > 3000) return fail(res, 'IMPORT_TOO_LARGE', '单次最多导入 3000 名学生');
+
+    const passwordMinLength = parseInt(getConfig('security.password_min_length', '8'), 10);
+    const defaultPassword = String(body.default_password || '');
+    if (defaultPassword.length < passwordMinLength || defaultPassword.length > 128) {
+      return fail(res, 'WEAK_PASSWORD', `统一初始密码必须为 ${passwordMinLength} 至 128 位`);
+    }
+
+    const errors = [];
+    const seen = new Set();
+    const rows = rawRows.map((raw, index) => {
+      const rowNumber = Number(raw.row_number) || index + 2;
+      const item = {
+        row_number: rowNumber,
+        student_no: String(raw.student_no ?? '').trim(),
+        name: String(raw.name ?? '').trim(),
+        grade: String(raw.grade ?? '').trim() || '未分组',
+        class_name: String(raw.class_name ?? '').trim() || '未分组',
+        password: String(raw.password ?? ''),
+      };
+      if (!item.student_no) errors.push({ row_number: rowNumber, message: '学号为空' });
+      else if (item.student_no.length > 32) errors.push({ row_number: rowNumber, message: '学号不能超过 32 个字符' });
+      else if (seen.has(item.student_no)) errors.push({ row_number: rowNumber, message: '文件内学号重复' });
+      else seen.add(item.student_no);
+      if (!item.name) item.name = item.student_no;
+      if (item.name.length > 64) errors.push({ row_number: rowNumber, message: '姓名不能超过 64 个字符' });
+      if (item.grade.length > 32 || item.class_name.length > 32) errors.push({ row_number: rowNumber, message: '年级或班级不能超过 32 个字符' });
+      if (item.password && (item.password.length < passwordMinLength || item.password.length > 128)) errors.push({ row_number: rowNumber, message: `初始密码必须为 ${passwordMinLength} 至 128 位` });
+      const existingStudent = db.students.find((student) => student.student_no === item.student_no);
+      const conflictingUser = db.users.find((account) => account.username === item.student_no && (!existingStudent || account.id !== existingStudent.user_id));
+      if (conflictingUser) errors.push({ row_number: rowNumber, message: '该学号已被其他账号占用' });
+      return item;
+    });
+    if (errors.length) return fail(res, 'INVALID_IMPORT_ROWS', `有 ${errors.length} 行数据无法导入`, 400, { errors: errors.slice(0, 100) });
+
+    const now = new Date().toISOString();
+    const passwordHashes = new Map();
+    const passwordHash = (password) => {
+      if (!passwordHashes.has(password)) passwordHashes.set(password, hashPassword(password));
+      return passwordHashes.get(password);
+    };
+    let created = 0;
+    let updated = 0;
+    for (const item of rows) {
+      let grade = db.grades.find((record) => record.name === item.grade);
+      if (!grade) {
+        grade = { id: nextId('grades'), name: item.grade, sort_order: db.grades.length + 1, status: 'ACTIVE' };
+        db.grades.push(grade);
+      }
+      let cls = db.classes.find((record) => record.grade_id === grade.id && record.name === item.class_name);
+      if (!cls) {
+        cls = { id: nextId('classes'), grade_id: grade.id, name: item.class_name, sort_order: db.classes.filter((record) => record.grade_id === grade.id).length + 1, status: 'ACTIVE' };
+        db.classes.push(cls);
+      }
+
+      let student = db.students.find((record) => record.student_no === item.student_no);
+      if (student) {
+        student.name = item.name; student.grade_id = grade.id; student.class_id = cls.id; student.status = 'ACTIVE';
+        let account = db.users.find((record) => record.id === student.user_id);
+        if (!account) {
+          account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(item.password || defaultPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
+          db.users.push(account); student.user_id = account.id;
+        } else {
+          account.status = 'ACTIVE'; account.updated_at = now;
+          if (item.password || body.reset_existing_password) {
+            account.password_hash = passwordHash(item.password || defaultPassword);
+            account.must_change_password = true;
+            account.failed_login_count = 0; account.locked_until = null;
+          }
+        }
+        updated += 1;
+      } else {
+        const account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(item.password || defaultPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
+        db.users.push(account);
+        student = { id: nextId('students'), user_id: account.id, student_no: item.student_no, name: item.name, grade_id: grade.id, class_id: cls.id, status: 'ACTIVE' };
+        db.students.push(student);
+        created += 1;
+      }
+    }
+    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'IMPORT_STUDENTS', target_type: 'students', target_id: 0, before_json: null, after_json: JSON.stringify({ created, updated, total: rows.length }), ip, created_at: now });
+    await save();
+    return ok(res, { created, updated, total: rows.length });
+  }
+
   if (path === '/api/admin/enrollments' && method === 'GET') {
     if (!requireStaff()) return;
     const status = url.searchParams.get('status') || 'ALL';
