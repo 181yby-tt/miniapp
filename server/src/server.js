@@ -831,14 +831,14 @@ const server = http.createServer(async (req, res) => {
         if (!account) {
           account = { id: nextId('users'), username: item.student_no, display_name: item.name, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
           db.users.push(account); student.user_id = account.id;
-          credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
+          credentials.push({ name: item.name, student_no: item.student_no, grade: grade.name, class_name: cls.name, username: item.student_no, password: initialPassword });
         } else {
           account.status = 'ACTIVE'; account.display_name = item.name; account.updated_at = now;
           if (body.reset_existing_password) {
             account.password_hash = passwordHash(initialPassword);
             account.must_change_password = true;
             account.failed_login_count = 0; account.locked_until = null;
-            credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
+            credentials.push({ name: item.name, student_no: item.student_no, grade: grade.name, class_name: cls.name, username: item.student_no, password: initialPassword });
           }
         }
         updated += 1;
@@ -847,7 +847,7 @@ const server = http.createServer(async (req, res) => {
         db.users.push(account);
         student = { id: nextId('students'), user_id: account.id, student_no: item.student_no, name: item.name, grade_id: grade.id, class_id: cls.id, status: 'ACTIVE' };
         db.students.push(student);
-        credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
+        credentials.push({ name: item.name, student_no: item.student_no, grade: grade.name, class_name: cls.name, username: item.student_no, password: initialPassword });
         created += 1;
       }
     }
