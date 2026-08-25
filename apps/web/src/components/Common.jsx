@@ -29,10 +29,6 @@ export function CourseArtwork({ course: rawCourse, large = false }) {
   const course = decorateCourse(rawCourse);
   return <div className={`course-artwork tone-surface-${course.tone} ${large ? 'large' : ''}`} aria-label={`${course.name}课程封面`}>
     <span>{course.category || '校本课程'}</span>
-    <b>{course.mark}</b>
-    <small>选课排课</small>
-    <i className="art-orbit one" aria-hidden="true" />
-    <i className="art-orbit two" aria-hidden="true" />
   </div>;
 }
 
@@ -44,7 +40,7 @@ export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = fals
       <CourseArtwork course={course} />
       <div className="course-card-main">
         <div className="course-card-heading">
-          <div><span className={`course-category tone-${course.tone}`}>{course.category || '校本课程'}</span><h3>{course.name}</h3></div>
+          <h3>{course.name}</h3>
           {onEnroll ? <button className={`small-action ${course.enrolled ? 'success' : ''}`} disabled={disabled || pending} onClick={(event) => { event.stopPropagation(); onEnroll(course.id); }}>{pending ? '报名中…' : course.enrolled ? '已报名' : course.remaining > 0 ? '报名' : '已满'}</button> : null}
         </div>
         <div className="course-meta"><span>{course.teacherText}</span><span>{course.timeText}</span><span>{course.venueText}</span></div>
