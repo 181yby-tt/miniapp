@@ -17,9 +17,9 @@ const CONFIG_TEXT = {
 const AUDIT_TEXT = {
   CHANGE_PASSWORD: '修改密码', IMPORT_STUDENTS: '导入学生名单', CREATE_COURSE: '新建课程', UPDATE_COURSE: '修改课程与排课',
   COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '暂停课程报名', COURSE_ARCHIVE: '移入历史课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
-  ENROLL: '学生报名', WITHDRAW: '学生退课', STAFF_ENROLL: '教务代报名', STAFF_WITHDRAW: '教务代退课',
+  ENROLL: '学生报名', WITHDRAW: '学生退课', STAFF_ENROLL: '教务代报名', STAFF_WITHDRAW: '教务代退课', CREATE_TEACHER_ACCOUNT: '新增教师账号',
 };
-const AUDIT_TARGET_TEXT = { course: '课程', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', venues: '场地', categories: '课程分类', 'time-slots': '时间段' };
+const AUDIT_TARGET_TEXT = { course: '课程', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', teacher_account: '教师账号', venues: '场地', categories: '课程分类', 'time-slots': '时间段' };
 
 function useAdminLoad(loader, dependencies = []) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
@@ -125,6 +125,35 @@ export function AdminStudentsPage({ api, toast }) {
   const [state, reload] = useAdminLoad(() => api.getAdminStudents(), []);
   const items = (state.data?.items || []).filter((item) => `${item.student_no}${item.name}${item.grade}${item.class_name}`.includes(query));
   return <><PageHeader eyebrow="学生资料、账号与班级" title="学生管理" description="先导入学生资料，系统会自动生成登录账号和初始密码。导入完成后，学生会进入下方名单。" /><StudentImportPanel api={api} toast={toast} onImported={reload} /><div className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名、年级或班级" /></div><span className="toolbar-count">{items.length} 名学生</span></div>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>姓名与登录账号</span><span>年级班级</span><span>已选课程</span><span>账号状态</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>登录账号：{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /></span></div>)}</div> : <Empty title="还没有学生资料" description="请先上传学生 Excel 名单。" />}</>;
+}
+
+export function AdminAccountsPage({ api, toast }) {
+  const [form, setForm] = useState({ username: '', name: '', password: '' });
+  const [saving, setSaving] = useState(false);
+  const [state, reload] = useAdminLoad(() => api.getAdminAccounts(), []);
+  const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  async function create(event) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await api.createAdminAccount(form);
+      setForm({ username: '', name: '', password: '' });
+      toast('教师账号已创建，首次登录需要修改密码');
+      reload();
+    } catch (error) { toast(error.message, 'error'); }
+    finally { setSaving(false); }
+  }
+  return <>
+    <PageHeader eyebrow="仅超级管理员可见" title="教师账号管理" description="新增可以进入教务管理端的老师账号。老师可以管理学生、课程和排课，但不能管理其他教师账号。" />
+    <form className="paper-card teacher-account-form" onSubmit={create}>
+      <div className="card-title"><div><h2>新增教师账号</h2><span>创建后请把账号和初始密码单独交给本人</span></div></div>
+      <label><span>登录账号</span><input value={form.username} onChange={update('username')} placeholder="例如：zhanglaoshi" autoComplete="off" /></label>
+      <label><span>教师姓名</span><input value={form.name} onChange={update('name')} placeholder="例如：张老师" autoComplete="off" /></label>
+      <label><span>初始密码</span><input type="password" value={form.password} onChange={update('password')} placeholder="至少 8 位" autoComplete="new-password" /></label>
+      <button className="primary-button" disabled={saving || !form.username.trim() || !form.name.trim() || form.password.length < 8}>{saving ? '正在创建…' : '创建教师账号'}</button>
+    </form>
+    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : <div className="responsive-table account-table"><div className="table-row table-head"><span>姓名与账号</span><span>角色</span><span>状态</span><span>首次改密</span></div>{state.data.items.map((account) => <div className="table-row" key={account.id}><span><strong>{account.name}</strong><small>登录账号：{account.username}{account.current ? ' · 当前账号' : ''}</small></span><span>{account.role === 'SUPER_ADMIN' ? '超级管理员' : '老师'}</span><span><StatusPill status={account.status} /></span><span>{account.must_change_password ? '登录后需要修改' : '已完成'}</span></div>)}</div>}
+  </>;
 }
 
 export function AdminResourcesPage({ api, toast }) {

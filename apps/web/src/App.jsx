@@ -3,7 +3,7 @@ import { createApiClient, createSessionStore, routeForSession } from '@kexu/clie
 import AppShell from './components/AppShell.jsx';
 import { LoginPage, ChangePasswordPage } from './pages/AuthPages.jsx';
 import { CourseDetailPage, CoursesPage, EnrollmentsPage, ProfilePage, SchedulePage } from './pages/StudentPages.jsx';
-import { AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSchedulePage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
+import { AdminAccountsPage, AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSchedulePage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
 import { navigate, usePathname } from './runtime/browser.js';
 
 const sessionStore = createSessionStore(window.localStorage);
@@ -16,7 +16,7 @@ export default function App() {
   const api = useMemo(() => createApiClient({
     baseUrl: import.meta.env.VITE_API_BASE_URL || '',
     sessionStore,
-    onUnauthorized: () => { sessionStore.clear(); setSession(null); navigate('/login', { replace: true }); },
+    onUnauthorized: () => { sessionStore.clear(); setSession(null); setProfile(null); navigate('/login', { replace: true }); },
   }), []);
   const isAdmin = ['STAFF', 'SUPER_ADMIN'].includes(session?.user_type);
 
@@ -25,6 +25,7 @@ export default function App() {
   else if (session && pathname === '/login') redirectPath = routeForSession(session);
   else if (session?.must_change_password && pathname !== '/change-password') redirectPath = '/change-password';
   else if (session && !session.must_change_password && isAdmin && !pathname.startsWith('/admin') && pathname !== '/change-password') redirectPath = '/admin';
+  else if (session && !session.must_change_password && pathname === '/admin/accounts' && session.user_type !== 'SUPER_ADMIN') redirectPath = '/admin';
   else if (session && !session.must_change_password && !isAdmin && pathname.startsWith('/admin')) redirectPath = '/courses';
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function App() {
 
   if (!session) {
     if (redirectPath) return null;
-    return <><LoginPage api={api} sessionStore={sessionStore} onSession={setSession} />{notice ? <div className={`toast ${notice.tone}`}>{notice.message}</div> : null}</>;
+    return <><LoginPage api={api} sessionStore={sessionStore} onSession={(next) => { setProfile(null); setSession(next); }} />{notice ? <div className={`toast ${notice.tone}`}>{notice.message}</div> : null}</>;
   }
 
   if (redirectPath) return null;
@@ -61,6 +62,7 @@ export default function App() {
     else if (pathname === '/admin/resources') page = <AdminResourcesPage api={api} toast={toast} />;
     else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
+    else if (pathname === '/admin/accounts') page = <AdminAccountsPage api={api} toast={toast} />;
     else page = <AdminDashboardPage api={api} />;
   } else {
     const detailMatch = pathname.match(/^\/courses\/(\d+)$/);
