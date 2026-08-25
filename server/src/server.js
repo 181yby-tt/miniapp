@@ -355,6 +355,7 @@ const server = http.createServer(async (req, res) => {
 
   const requireUser = () => { if (!user) { fail(res, 'UNAUTHORIZED', '请先登录', 401); return false; } return true; };
   const requireStaff = () => { if (!user || !['STAFF', 'SUPER_ADMIN'].includes(user.user_type)) { fail(res, 'FORBIDDEN', '无权访问', 403); return false; } return true; };
+  const requireSuperAdmin = () => { if (!user || user.user_type !== 'SUPER_ADMIN') { fail(res, 'FORBIDDEN', '只有超级管理员可以管理教师账号', 403); return false; } return true; };
 
   // 公开
   if (['/admin-console.html', '/admin/legacy'].includes(path) && method === 'GET') {
@@ -367,7 +368,7 @@ const server = http.createServer(async (req, res) => {
     if (u.locked_until && new Date(u.locked_until) > new Date()) return fail(res, 'ACCOUNT_LOCKED', '账号已锁定，请稍后再试', 423);
     if (u.status === 'DISABLED') return fail(res, 'ACCOUNT_DISABLED', '账号已停用', 403);
     const token = sign({ uid: u.id, user_type: u.user_type });
-    return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username });
+    return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, display_name: u.display_name || u.username });
   }
 
   // 微信登录（wx.login code -> openid）：已绑定返回 token，未绑定返回 NEED_BIND + openid
@@ -383,7 +384,7 @@ const server = http.createServer(async (req, res) => {
     const u = db.users.find((x) => x.wechat_openid === wx.openid);
     if (u && u.status !== 'DISABLED') {
       const token = sign({ uid: u.id, user_type: u.user_type });
-      return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, openid: wx.openid });
+      return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, display_name: u.display_name || u.username, openid: wx.openid });
     }
     // 未绑定：返回 openid，交由小程序走「学号 + 密码」绑定流程
     return ok(res, { code: 'NEED_BIND', openid: wx.openid });
@@ -400,7 +401,7 @@ const server = http.createServer(async (req, res) => {
     u.updated_at = new Date().toISOString();
     save();
     const token = sign({ uid: u.id, user_type: u.user_type });
-    return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username });
+    return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, display_name: u.display_name || u.username });
   }
 
   // 已登录用户绑定 openid（手动登录后自动关联，便于下次一键登录）
@@ -574,6 +575,51 @@ const server = http.createServer(async (req, res) => {
       grades: db.grades.map((g) => ({ id: g.id, name: g.name })),
       classes: db.classes.map((c) => ({ id: c.id, name: c.name, grade_id: c.grade_id })),
     });
+  }
+
+  if (path === '/api/admin/accounts' && method === 'GET') {
+    if (!requireSuperAdmin()) return;
+    const items = db.users
+      .filter((account) => ['STAFF', 'SUPER_ADMIN'].includes(account.user_type))
+      .map((account) => ({
+        id: account.id,
+        username: account.username,
+        name: account.display_name || account.username,
+        role: account.user_type,
+        status: account.status,
+        must_change_password: Boolean(account.must_change_password),
+        created_at: account.created_at,
+        current: account.id === user.id,
+      }))
+      .sort((left, right) => Number(right.role === 'SUPER_ADMIN') - Number(left.role === 'SUPER_ADMIN') || left.id - right.id);
+    return ok(res, { items });
+  }
+
+  if (path === '/api/admin/accounts' && method === 'POST') {
+    if (!requireSuperAdmin()) return;
+    const username = String(body.username || '').trim();
+    const name = String(body.name || '').trim();
+    const password = String(body.password || '');
+    if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) return fail(res, 'INVALID_USERNAME', '登录账号只能使用 3 至 64 位字母、数字、点、下划线或短横线', 400);
+    if (!name || name.length > 64) return fail(res, 'INVALID_NAME', '教师姓名不能为空且不能超过 64 个字符', 400);
+    if (password.length < 8 || password.length > 128) return fail(res, 'INVALID_PASSWORD', '初始密码必须为 8 至 128 位', 400);
+    if (db.users.some((account) => account.username.toLowerCase() === username.toLowerCase())) return fail(res, 'DUPLICATE_USERNAME', '这个登录账号已经存在', 409);
+    const now = new Date().toISOString();
+    const account = {
+      id: nextId('users'), username, display_name: name, password_hash: hashPassword(password),
+      user_type: 'STAFF', status: 'ACTIVE', must_change_password: true,
+      failed_login_count: 0, locked_until: null, wechat_openid: null,
+      created_at: now, updated_at: now,
+    };
+    const staff = {
+      id: nextId('staff'), user_id: account.id, staff_no: username,
+      name, title: '', department: '', status: 'ACTIVE',
+    };
+    db.users.push(account);
+    db.staff.push(staff);
+    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'CREATE_TEACHER_ACCOUNT', target_type: 'teacher_account', target_id: account.id, before_json: null, after_json: JSON.stringify({ username, name, role: 'STAFF' }), ip, created_at: now });
+    await save();
+    return ok(res, { account: { id: account.id, username, name, role: account.user_type, status: account.status, must_change_password: true, created_at: now }, staff });
   }
 
   if (/^\/api\/admin\/meta\/(staff|venues|categories|time-slots)$/.test(path) && method === 'POST') {
@@ -789,11 +835,11 @@ const server = http.createServer(async (req, res) => {
         let account = db.users.find((record) => record.id === student.user_id);
         if (!account) {
           const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
-          account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
+          account = { id: nextId('users'), username: item.student_no, display_name: item.name, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
           db.users.push(account); student.user_id = account.id;
           credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
         } else {
-          account.status = 'ACTIVE'; account.updated_at = now;
+          account.status = 'ACTIVE'; account.display_name = item.name; account.updated_at = now;
           if (item.password || body.reset_existing_password) {
             const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
             account.password_hash = passwordHash(initialPassword);
@@ -805,7 +851,7 @@ const server = http.createServer(async (req, res) => {
         updated += 1;
       } else {
         const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
-        const account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
+        const account = { id: nextId('users'), username: item.student_no, display_name: item.name, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
         db.users.push(account);
         student = { id: nextId('students'), user_id: account.id, student_no: item.student_no, name: item.name, grade_id: grade.id, class_id: cls.id, status: 'ACTIVE' };
         db.students.push(student);
@@ -863,7 +909,7 @@ const server = http.createServer(async (req, res) => {
       let target_name = '';
       if (item.target_type === 'course') target_name = getCourse(item.target_id)?.name || '';
       if (item.target_type === 'student') target_name = getStudent(item.target_id)?.name || '';
-      return { ...item, actor_name: student?.name || staff?.name || actor?.username || '系统', target_name };
+      return { ...item, actor_name: student?.name || staff?.name || actor?.display_name || actor?.username || '系统', target_name };
     });
     return ok(res, { items });
   }

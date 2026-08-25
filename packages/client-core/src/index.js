@@ -102,6 +102,8 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
     getAdminConfigs: () => request('/api/admin/configs'),
     updateAdminConfigs: (items) => request('/api/admin/configs', { method: 'PUT', body: { items } }),
     getAdminAudit: () => request('/api/admin/audit'),
+    getAdminAccounts: () => request('/api/admin/accounts'),
+    createAdminAccount: (payload) => request('/api/admin/accounts', { method: 'POST', body: payload }),
   };
 }
 

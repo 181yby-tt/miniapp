@@ -9,6 +9,7 @@
     "test": "node --test test/*.test.js",
     "load-test": "node tools/load-test.js",
     "consistency-test": "node tools/consistency-test.js",
+    "provision-super-admin": "node tools/provision-super-admin.js",
     "reset": "node -e \"require('fs').existsSync('data.json')&&require('fs').unlinkSync('data.json');console.log('已删除本地 data.json（MySQL 模式下下次启动会重新种子）')\"",
     "reset-db": "node tools/reset.js"
   },

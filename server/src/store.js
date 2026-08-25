@@ -297,8 +297,9 @@ function seed() {
 
   // 超级管理员（bootstrap）
   const adminPwd = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'demo123456';
+  const adminUsername = process.env.BOOTSTRAP_ADMIN_USERNAME || 'admin';
   db.users.push({
-    id: nextId('users'), username: process.env.BOOTSTRAP_ADMIN_USERNAME || 'admin',
+    id: nextId('users'), username: adminUsername, display_name: process.env.BOOTSTRAP_ADMIN_NAME || adminUsername,
     password_hash: hashPassword(adminPwd), user_type: 'SUPER_ADMIN', status: 'ACTIVE',
     must_change_password: true, failed_login_count: 0, locked_until: null,
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -317,7 +318,7 @@ function seed() {
   studentSeed.forEach((s) => {
     const uid = nextId('users');
     db.users.push({
-      id: uid, username: s.no, password_hash: hashPassword('123456'),
+      id: uid, username: s.no, display_name: s.name, password_hash: hashPassword('123456'),
       user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true,
       failed_login_count: 0, locked_until: null,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
