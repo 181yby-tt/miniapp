@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { parseStudentSheet } from '../../utils/studentImport.js';
+import { buildStudentCredentialSheet, STUDENT_CREDENTIAL_COLUMNS } from '../../utils/studentCredentialExport.js';
 
-function downloadCredentials(credentials) {
-  const escape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const lines = [['姓名', '学号', '登录账号', '初始密码'], ...credentials.map((item) => [item.name, item.student_no, item.username, item.password])];
-  const csv = `\ufeff${lines.map((line) => line.map(escape).join(',')).join('\r\n')}`;
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url; link.download = `学生初始账号_${new Date().toISOString().slice(0, 10)}.csv`; link.click();
-  URL.revokeObjectURL(url);
+async function downloadCredentials(credentials) {
+  const { default: writeExcelFile } = await import('write-excel-file/browser');
+  await writeExcelFile(buildStudentCredentialSheet(credentials), {
+    columns: STUDENT_CREDENTIAL_COLUMNS,
+    sheet: '学生账号',
+    stickyRowsCount: 1,
+  }).toFile(`学生初始账号_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 export default function StudentImportPanel({ api, toast, onImported }) {
@@ -91,7 +91,7 @@ export default function StudentImportPanel({ api, toast, onImported }) {
       <div className="import-sample"><span>导入预览</span>{preview.rows.slice(0, 5).map((student) => <span key={student.student_no}><strong>{student.student_no}</strong>{student.name} · {student.grade} · {student.class_name}</span>)}</div>
       <button className="primary-compact" disabled={importing || !preview.rows.length} onClick={runImport}>{importing ? '正在生成账号并导入…' : `确认导入 ${preview.rows.length} 名学生`}</button>
     </div> : null}
-    {credentials.length ? <div className="credential-result"><div><strong>账号已经生成</strong><span>登录账号为学号，统一初始密码为 {initialPassword}。可下载名单发放给学生。</span></div><button onClick={() => downloadCredentials(credentials)}>下载账号密码表</button><div className="credential-preview">{credentials.slice(0, 5).map((item) => <span key={item.student_no}><strong>{item.name}</strong><code>{item.username}</code><code>{item.password}</code></span>)}</div></div> : null}
+    {credentials.length ? <div className="credential-result"><div><strong>账号已经生成</strong><span>登录账号为学号，统一初始密码为 {initialPassword}。可下载含年级、班级的 Excel 名单发放给学生。</span></div><button onClick={async () => { try { await downloadCredentials(credentials); } catch (error) { toast(error.message || 'Excel 下载失败', 'error'); } }}>下载 Excel 账号表</button><div className="credential-preview">{credentials.slice(0, 5).map((item) => <span key={item.student_no}><strong>{item.name}</strong><code>{item.class_name}</code><code>{item.username}</code></span>)}</div></div> : null}
     </section>
   </div>;
 }
