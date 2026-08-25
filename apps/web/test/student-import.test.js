@@ -14,7 +14,6 @@ test('parses common Chinese student headers and preserves numeric IDs', () => {
     name: '张三',
     grade: '七年级',
     class_name: '1 班',
-    password: '',
   });
 });
 

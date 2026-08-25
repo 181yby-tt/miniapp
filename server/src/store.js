@@ -384,6 +384,7 @@ function seed() {
     ['enrollment.allow_withdraw_after_start', 'false', 'bool'],
     ['enrollment.allow_reenroll', 'true', 'bool'],
     ['security.password_min_length', '8', 'int'],
+    ['security.student_initial_password', '12345678', 'string'],
     ['security.login_max_failures', '5', 'int'],
     ['security.lock_minutes', '15', 'int'],
   ];

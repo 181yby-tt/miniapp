@@ -9,7 +9,6 @@
  */
 
 const http = require('http');
-const crypto = require('crypto');
 const fs = require('fs');
 const pathlib = require('path');
 const { URL } = require('url');
@@ -20,7 +19,6 @@ const { initRedis, rateLimit, getJson, setJson, invalidate, withScheduleLock, wi
 const scheduleConflicts = require('./schedule-conflicts');
 
 const PORT = process.env.PORT || 3000;
-const STUDENT_PASSWORD_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
 const ADMIN_CONSOLE_FILE = pathlib.resolve(__dirname, '..', '..', 'admin-console.html');
 const WEB_DIST_DIR = pathlib.resolve(process.env.WEB_DIST_DIR || pathlib.join(__dirname, '..', '..', 'apps', 'web', 'dist'));
 const WEB_INDEX_FILE = pathlib.join(WEB_DIST_DIR, 'index.html');
@@ -153,11 +151,6 @@ function audit(actorId, action, targetType, targetId, before, after, ip) {
     ip: ip || '', created_at: new Date().toISOString(),
   });
   save();
-}
-
-function generatedStudentPassword(name, studentNo) {
-  const digest = crypto.createHmac('sha256', STUDENT_PASSWORD_SECRET).update(`${studentNo}|${name}`).digest('base64url');
-  return `Xk@${digest.slice(0, 9)}`;
 }
 
 /* ----------------------------- 查询助手 ----------------------------- */
@@ -780,6 +773,10 @@ const server = http.createServer(async (req, res) => {
     if (rawRows.length > 3000) return fail(res, 'IMPORT_TOO_LARGE', '单次最多导入 3000 名学生');
 
     const passwordMinLength = parseInt(getConfig('security.password_min_length', '8'), 10);
+    const initialPassword = String(getConfig('security.student_initial_password', '12345678'));
+    if (initialPassword.length < passwordMinLength || initialPassword.length > 128) {
+      return fail(res, 'INVALID_INITIAL_PASSWORD_CONFIG', `统一初始密码必须为 ${passwordMinLength} 至 128 位，请先到规则设置中修改`, 500);
+    }
 
     const errors = [];
     const seen = new Set();
@@ -791,7 +788,6 @@ const server = http.createServer(async (req, res) => {
         name: String(raw.name ?? '').trim(),
         grade: String(raw.grade ?? '').trim() || '未分组',
         class_name: String(raw.class_name ?? '').trim() || '未分组',
-        password: String(raw.password ?? ''),
       };
       if (!item.student_no) errors.push({ row_number: rowNumber, message: '学号为空' });
       else if (item.student_no.length > 32) errors.push({ row_number: rowNumber, message: '学号不能超过 32 个字符' });
@@ -800,7 +796,6 @@ const server = http.createServer(async (req, res) => {
       if (!item.name) errors.push({ row_number: rowNumber, message: '姓名为空' });
       if (item.name.length > 64) errors.push({ row_number: rowNumber, message: '姓名不能超过 64 个字符' });
       if (item.grade.length > 32 || item.class_name.length > 32) errors.push({ row_number: rowNumber, message: '年级或班级不能超过 32 个字符' });
-      if (item.password && (item.password.length < passwordMinLength || item.password.length > 128)) errors.push({ row_number: rowNumber, message: `初始密码必须为 ${passwordMinLength} 至 128 位` });
       const existingStudent = db.students.find((student) => student.student_no === item.student_no);
       const conflictingUser = db.users.find((account) => account.username === item.student_no && (!existingStudent || account.id !== existingStudent.user_id));
       if (conflictingUser) errors.push({ row_number: rowNumber, message: '该学号已被其他账号占用' });
@@ -834,14 +829,12 @@ const server = http.createServer(async (req, res) => {
         student.name = item.name; student.grade_id = grade.id; student.class_id = cls.id; student.status = 'ACTIVE';
         let account = db.users.find((record) => record.id === student.user_id);
         if (!account) {
-          const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
           account = { id: nextId('users'), username: item.student_no, display_name: item.name, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
           db.users.push(account); student.user_id = account.id;
           credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
         } else {
           account.status = 'ACTIVE'; account.display_name = item.name; account.updated_at = now;
-          if (item.password || body.reset_existing_password) {
-            const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
+          if (body.reset_existing_password) {
             account.password_hash = passwordHash(initialPassword);
             account.must_change_password = true;
             account.failed_login_count = 0; account.locked_until = null;
@@ -850,7 +843,6 @@ const server = http.createServer(async (req, res) => {
         }
         updated += 1;
       } else {
-        const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
         const account = { id: nextId('users'), username: item.student_no, display_name: item.name, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
         db.users.push(account);
         student = { id: nextId('students'), user_id: account.id, student_no: item.student_no, name: item.name, grade_id: grade.id, class_id: cls.id, status: 'ACTIVE' };
@@ -891,12 +883,20 @@ const server = http.createServer(async (req, res) => {
 
   if (path === '/api/admin/configs' && method === 'PUT') {
     if (!requireStaff()) return;
-    (body.items || []).forEach((it) => {
+    const items = Array.isArray(body.items) ? body.items : [];
+    const initialPasswordItem = items.find((item) => item.key === 'security.student_initial_password');
+    if (initialPasswordItem) {
+      const passwordMinItem = items.find((item) => item.key === 'security.password_min_length');
+      const minLength = parseInt(passwordMinItem?.value ?? getConfig('security.password_min_length', '8'), 10);
+      const value = String(initialPasswordItem.value || '');
+      if (value.length < minLength || value.length > 128) return fail(res, 'INVALID_INITIAL_PASSWORD', `统一初始密码必须为 ${minLength} 至 128 位`, 400);
+    }
+    items.forEach((it) => {
       const row = db.system_configs.find((c) => c.config_key === it.key);
       if (row) { row.config_value = String(it.value); row.updated_by = user.id; row.updated_at = new Date().toISOString(); }
     });
     save();
-    audit(user.id, 'UPDATE_CONFIG', 'system', 0, null, body.items, ip);
+    audit(user.id, 'UPDATE_CONFIG', 'system', 0, null, items.map((item) => ({ key: item.key, value: item.key === 'security.student_initial_password' ? '已更新' : item.value })), ip);
     return ok(res, { saved: true });
   }
 
