@@ -19,32 +19,49 @@
 
 服务器需要安装 Docker Engine、Docker Compose 插件和 Git。
 
-## 首次上线
+## 首次上线（暂时没有域名）
 
-1. 将域名的 A 记录解析到香港服务器公网 IP。
-2. 将仓库克隆到服务器。
-3. 进入部署目录并创建生产环境变量：
+1. 将仓库克隆到服务器。
+2. 进入部署目录并创建生产环境变量：
 
    ```bash
    cd miniapp/deploy/tencent-hk
    cp .env.example .env
    ```
 
-4. 编辑 `.env`，填写真实域名以及三个不同的随机密码/密钥。
-5. 构建并启动：
+3. 编辑 `.env`：保留 `SITE_ADDRESS=:80`，将 `PUBLIC_ORIGIN` 改为 `http://服务器公网IP`，并填写三个不同的随机密码/密钥。
+4. 构建并启动：
 
    ```bash
    docker compose up -d --build
    ```
 
-6. 查看状态：
+5. 查看状态：
 
    ```bash
    docker compose ps
    docker compose logs -f app caddy
    ```
 
-Caddy 会在域名已经正确解析、80/443 可访问后自动申请和续期 HTTPS 证书。
+现在可以通过 `http://服务器公网IP` 访问。IP 测试阶段只有 HTTP，不要在公网环境长期使用真实用户密码。
+
+## 以后绑定域名和 HTTPS
+
+1. 将域名的 A 记录解析到服务器公网 IP。
+2. 把 `.env` 改为：
+
+   ```dotenv
+   SITE_ADDRESS=course.example.com
+   PUBLIC_ORIGIN=https://course.example.com
+   ```
+
+3. 重新构建启动：
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+Caddy 会在域名解析生效且 80/443 可访问后自动申请和续期 HTTPS 证书。
 
 ## 更新代码
 
