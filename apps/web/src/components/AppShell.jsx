@@ -12,10 +12,11 @@ export default function AppShell({ session, pathname, profile, onLogout, childre
   const items = isAdmin ? adminItems : studentItems;
   const isActive = (path) => path === '/admin' ? pathname === path : pathname === path || pathname.startsWith(`${path}/`);
   return (
-    <div className={`product-shell ${isAdmin ? 'admin-mode' : ''}`}>
+    <div className={`product-shell ${isAdmin ? 'admin-mode' : 'student-mode'}`}>
       <aside className="side-rail">
-        <button className="logo-button" onClick={() => navigate(isAdmin ? '/admin' : '/courses')} aria-label="返回首页">课</button>
-        <div className="rail-brand"><strong>选课排课</strong><span>{isAdmin ? '教务管理' : '学生选课'}</span></div>
+        <button className="logo-button" onClick={() => navigate(isAdmin ? '/admin' : '/courses')} aria-label="返回首页">{isAdmin ? '教' : '课'}</button>
+        <div className="rail-brand"><strong>选课排课</strong><span>{isAdmin ? '教务管理后台' : '学生选课中心'}</span></div>
+        <div className="role-chip">{isAdmin ? '管理端' : '学生端'}</div>
         <nav className="primary-nav" aria-label="主导航">
           {items.map(([path, label, mark]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => navigate(path)}><span>{mark}</span>{label}</button>)}
         </nav>

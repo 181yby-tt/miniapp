@@ -25,12 +25,23 @@ export function Metric({ value, suffix, label, tone = '' }) {
   return <div className={`metric ${tone}`}><div><strong>{value}</strong>{suffix ? <span>{suffix}</span> : null}</div><p>{label}</p></div>;
 }
 
+export function CourseArtwork({ course: rawCourse, large = false }) {
+  const course = decorateCourse(rawCourse);
+  return <div className={`course-artwork tone-surface-${course.tone} ${large ? 'large' : ''}`} aria-label={`${course.name}课程封面`}>
+    <span>{course.category || '校本课程'}</span>
+    <b>{course.mark}</b>
+    <small>选课排课</small>
+    <i className="art-orbit one" aria-hidden="true" />
+    <i className="art-orbit two" aria-hidden="true" />
+  </div>;
+}
+
 export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = false, pending = false }) {
   const course = decorateCourse(rawCourse);
   const disabled = course.remaining <= 0 || course.enrolled;
   return (
     <article className={`course-card ${compact ? 'compact' : ''}`} onClick={() => onOpen?.(course.id)}>
-      <div className={`course-mark tone-${course.tone}`}>{course.mark}</div>
+      <CourseArtwork course={course} />
       <div className="course-card-main">
         <div className="course-card-heading">
           <div><span className={`course-category tone-${course.tone}`}>{course.category || '校本课程'}</span><h3>{course.name}</h3></div>

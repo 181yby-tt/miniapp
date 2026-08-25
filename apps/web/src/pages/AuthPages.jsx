@@ -30,6 +30,10 @@ export function LoginPage({ api, sessionStore, onSession }) {
       <section className="login-panel">
         <form className="login-card" onSubmit={submit}>
           <p className="eyebrow ink">统一入口</p><h2>欢迎回来</h2><p className="login-intro">学生和教职工使用学校统一发放的账号登录</p>
+          <div className="login-role-guide" aria-label="登录后进入的系统">
+            <div><strong>学生账号</strong><span>进入学生端：选课、我的课程和课表</span></div>
+            <div><strong>教职工账号</strong><span>进入管理端：学生、课程、排课和规则</span></div>
+          </div>
           <label><span>账号</span><input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="请输入学号或教职工账号" /></label>
           <label><span>密码</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入密码" /></label>
           {error ? <div className="form-error" role="alert">{error}</div> : null}

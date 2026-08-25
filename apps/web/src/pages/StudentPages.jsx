@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildSchedule, decorateCourse, makeIdempotencyKey, WEEK_DAYS } from '@kexu/client-core';
-import { CourseCard, Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
+import { CourseArtwork, CourseCard, Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
 import { formatDate, navigate } from '../runtime/browser.js';
 
 function useLoad(loader, dependencies = []) {
@@ -41,7 +41,7 @@ export function CoursesPage({ api, toast }) {
   });
   const mineCount = state.data?.mine?.items?.length || 0;
   return <>
-    <PageHeader eyebrow="铁英中学 · 学生选课" title="选择本学期课程" description="先查看时间、老师和剩余名额，确认无冲突后再报名。重复点击不会重复占用名额。" />
+    <PageHeader eyebrow="学生端 · 课程大厅" title="选择本学期课程" description="这里是学生选课页面。先查看时间、老师和剩余名额，确认无冲突后再报名。" />
     <section className="metric-grid compact-metrics"><Metric value={mineCount} suffix={` / ${state.data?.mine?.max_active || 2}`} label="我已选择" /><Metric value={state.data?.items?.length ?? '—'} label="可选课程" /><Metric value={state.data ? state.data.items.filter((course) => course.remaining > 0).length : '—'} label="仍有名额" tone="accent" /></section>
     <section className="course-guide"><strong>{mineCount ? `你已选择 ${mineCount} 门课程` : '你还没有选择课程'}</strong><span>{mineCount >= (state.data?.mine?.max_active || 2) ? '已经达到选课数量上限，如需调整请先到“我的课程”退课。' : `还可以再选 ${Math.max(0, (state.data?.mine?.max_active || 2) - mineCount)} 门，系统会自动检查时间冲突。`}</span></section>
     <section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程、分类或老师" /></div><div className="segmented course-filters">{[['all', '全部课程'], ['available', '可以报名'], ['enrolled', '我已报名']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></section>
@@ -68,7 +68,7 @@ export function CourseDetailPage({ api, courseId, toast }) {
   async function withdraw() { if (!window.confirm('退课后名额会立即释放，确定要退出该课程吗？')) return; try { await api.withdraw(course.id); toast('已退课'); setRefreshKey((key) => key + 1); } catch (error) { toast(error.message, 'error'); } }
   return <>
     <button className="back-button" onClick={() => navigate('/courses')}>← 返回课程大厅</button>
-    <section className={`detail-hero tone-surface-${course.tone}`}><div className={`detail-mark tone-${course.tone}`}>{course.mark}</div><div><span>{course.category}</span><h1>{course.name}</h1><StatusPill status={course.status} /></div></section>
+    <section className={`detail-hero tone-surface-${course.tone}`}><CourseArtwork course={course} large /><div><span>学生端 · {course.category}</span><h1>{course.name}</h1><StatusPill status={course.status} /></div></section>
     <div className="detail-grid"><section className="paper-card detail-facts"><h2>课程信息</h2><dl><div><dt>负责老师</dt><dd>{course.teacherText}</dd></div><div><dt>上课时间</dt><dd>{course.timeText}</dd></div><div><dt>上课场地</dt><dd>{course.venueText}</dd></div><div><dt>课程容量</dt><dd>{course.capacity} 人</dd></div><div><dt>剩余名额</dt><dd className={course.remaining ? 'good' : 'bad'}>{course.remaining} 人</dd></div></dl></section><section className="paper-card detail-description"><h2>课程简介</h2><p>{course.description || '暂无课程简介'}</p>{eligibility?.eligible === false ? <div className="inline-alert">{eligibility.reason}</div> : null}</section></div>
     <div className="detail-actions">{course.enrolled ? <button className="danger-button" onClick={withdraw}>退课</button> : <button className="primary-button" disabled={!canEnroll} onClick={enroll}>{canEnroll ? `立即报名（余 ${course.remaining}）` : eligibility?.reason || (course.remaining <= 0 ? '已满员' : '暂不可报名')}</button>}</div>
   </>;
