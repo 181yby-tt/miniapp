@@ -470,27 +470,119 @@ async function flush(conn) {
 
 // 序列化的异步落库链，避免并发 flush 互相覆盖
 let saveChain = Promise.resolve();
+let snapshotPending = false;
+let activeDirectMutations = 0;
+let snapshotDrain = null;
+let mutationWaiters = [];
+
+async function enterDirectMutation() {
+  while (snapshotPending) await new Promise((resolve) => mutationWaiters.push(resolve));
+  activeDirectMutations += 1;
+}
+
+function leaveDirectMutation() {
+  activeDirectMutations = Math.max(0, activeDirectMutations - 1);
+  if (activeDirectMutations === 0 && snapshotDrain) { snapshotDrain(); snapshotDrain = null; }
+}
+
 async function save() {
   // 同步写文件作为容器内临时兜底；持久数据仍以所选云存储为准。
   try { saveFile(); } catch (e) { /* ignore */ }
   if (!cloudbaseMysqlReady && !mysqlReady) return;
   saveChain = saveChain
     .then(async () => {
-      if (cloudbaseMysqlReady) {
-        await saveCloudBaseMysqlSnapshot();
-        return;
-      }
-      const p = await getPool();
-      if (!p) return;
-      const conn = await p.getConnection();
+      snapshotPending = true;
+      if (activeDirectMutations > 0) await new Promise((resolve) => { snapshotDrain = resolve; });
       try {
-        await flush(conn);
+        if (cloudbaseMysqlReady) {
+          await saveCloudBaseMysqlSnapshot();
+          return;
+        }
+        const p = await getPool();
+        if (!p) return;
+        const conn = await p.getConnection();
+        try {
+          await flush(conn);
+        } finally {
+          conn.release();
+        }
       } finally {
-        conn.release();
+        snapshotPending = false;
+        const waiters = mutationWaiters; mutationWaiters = [];
+        waiters.forEach((resolve) => resolve());
       }
     })
     .catch((e) => console.error('[存储] 云端写入失败:', e.message));
   return saveChain;
+}
+
+// 报名高并发路径只更新相关行，避免每次报名都执行整库 DELETE + INSERT。
+// 课程行使用 FOR UPDATE + 条件更新防止超卖；学生行由上层 Redis 锁串行化。
+async function refreshEnrollmentState(studentId, courseId) {
+  if (!mysqlReady) return false;
+  const p = await getPool();
+  if (!p) return false;
+  const [[courseRows], [enrollmentRows]] = await Promise.all([
+    p.query('SELECT * FROM `courses` WHERE `id` = ? LIMIT 1', [courseId]),
+    p.query('SELECT * FROM `enrollments` WHERE `student_id` = ?', [studentId]),
+  ]);
+  if (courseRows[0]) {
+    const current = db.courses.find((item) => item.id === Number(courseId));
+    const fresh = {};
+    for (const key of Object.keys(courseRows[0])) fresh[key] = readVal('courses', key, courseRows[0][key]);
+    if (current) Object.assign(current, fresh);
+  }
+  db.enrollments = db.enrollments.filter((item) => item.student_id !== Number(studentId));
+  enrollmentRows.forEach((row) => {
+    const fresh = {};
+    for (const key of Object.keys(row)) fresh[key] = readVal('enrollments', key, row[key]);
+    db.enrollments.push(fresh);
+  });
+  return true;
+}
+
+async function persistEnrollmentMutation({ mode, courseId, enrollment, auditLog }) {
+  if (!mysqlReady) return { handled: false };
+  const p = await getPool();
+  if (!p) return { handled: false };
+  await enterDirectMutation();
+  let conn;
+  try {
+    conn = await p.getConnection();
+    await conn.beginTransaction();
+    const [courseRows] = await conn.query('SELECT `active_count`,`capacity` FROM `courses` WHERE `id` = ? FOR UPDATE', [courseId]);
+    if (!courseRows.length) {
+      const error = new Error('课程不存在'); error.code = 'NOT_FOUND'; throw error;
+    }
+    if (mode === 'enroll') {
+      const [updated] = await conn.query('UPDATE `courses` SET `active_count`=`active_count`+1,`version`=`version`+1 WHERE `id`=? AND `active_count`<`capacity`', [courseId]);
+      if (!updated.affectedRows) { const error = new Error('课程名额已满'); error.code = 'COURSE_FULL'; throw error; }
+    } else {
+      await conn.query('UPDATE `courses` SET `active_count`=GREATEST(0,`active_count`-1),`version`=`version`+1 WHERE `id`=?', [courseId]);
+    }
+
+    const columns = Object.keys(enrollment);
+    const values = columns.map((column) => writeVal('enrollments', column, enrollment[column]));
+    const updates = columns.filter((column) => column !== 'id').map((column) => `\`${column}\`=VALUES(\`${column}\`)`).join(',');
+    await conn.query(`INSERT INTO \`enrollments\` (${columns.map((column) => `\`${column}\``).join(',')}) VALUES (${columns.map(() => '?').join(',')}) ON DUPLICATE KEY UPDATE ${updates}`, values);
+
+    if (auditLog) {
+      const auditColumns = Object.keys(auditLog);
+      await conn.query(
+        `INSERT INTO \`audit_logs\` (${auditColumns.map((column) => `\`${column}\``).join(',')}) VALUES (${auditColumns.map(() => '?').join(',')})`,
+        auditColumns.map((column) => writeVal('audit_logs', column, auditLog[column])),
+      );
+    }
+    const [freshRows] = await conn.query('SELECT `active_count`,`version` FROM `courses` WHERE `id`=?', [courseId]);
+    await conn.commit();
+    return { handled: true, activeCount: Number(freshRows[0].active_count), version: Number(freshRows[0].version) };
+  } catch (error) {
+    if (conn) await conn.rollback();
+    throw error;
+  } finally {
+    if (conn) conn.release();
+    leaveDirectMutation();
+  }
 }
 
 /* ----------------------------- 统一初始化入口 ----------------------------- */
@@ -525,4 +617,4 @@ async function initStore() {
   loadOrSeedFile();
 }
 
-module.exports = { db, nextId, initStore, save };
+module.exports = { db, nextId, initStore, save, refreshEnrollmentState, persistEnrollmentMutation };

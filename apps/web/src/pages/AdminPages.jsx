@@ -6,19 +6,20 @@ import StudentImportPanel from '../components/admin/StudentImportPanel.jsx';
 import { formatDate } from '../runtime/browser.js';
 
 const CONFIG_TEXT = {
-  'student.max_active_courses': ['每名学生最多可选课程数', '达到数量后不能继续报名'],
-  'student.max_courses_per_category': ['同一分类最多可选课程数', '填 0 表示不限制'],
-  'enrollment.allow_withdraw_after_start': ['开课后允许学生退课', '关闭后只能由教务人员处理'],
-  'enrollment.allow_reenroll': ['退课后允许再次报名', '控制学生是否可以重新选择同一课程'],
-  'security.password_min_length': ['密码最少位数', '建议不少于 8 位'],
-  'security.login_max_failures': ['连续输错密码次数上限', '达到上限后账号会暂时锁定'],
-  'security.lock_minutes': ['账号锁定时长（分钟）', '超过时长后自动解锁'],
+  'student.max_active_courses': { group: '学生选课', label: '每个学生最多能选几门课？', help: '达到这个数量后，学生不能继续报名。', unit: '门' },
+  'student.max_courses_per_category': { group: '学生选课', label: '同一类课程最多能选几门？', help: '例如体育类最多选 1 门；填写 0 表示不限制。', unit: '门' },
+  'enrollment.allow_withdraw_after_start': { group: '退课处理', label: '课程开始后，学生还能自己退课吗？', help: '选择“不允许”后，只能由教务人员处理。' },
+  'enrollment.allow_reenroll': { group: '退课处理', label: '学生退课后，还能重新报名同一门课吗？', help: '名额未满且没有时间冲突时才可重新报名。' },
+  'security.password_min_length': { group: '账号安全', label: '学生密码至少多少位？', help: '建议保持 8 位或以上。', unit: '位' },
+  'security.login_max_failures': { group: '账号安全', label: '连续输错几次后锁定账号？', help: '用于阻止别人反复猜密码。', unit: '次' },
+  'security.lock_minutes': { group: '账号安全', label: '输错密码后锁定多久？', help: '到时间后账号会自动恢复登录。', unit: '分钟' },
 };
 const AUDIT_TEXT = {
   CHANGE_PASSWORD: '修改密码', IMPORT_STUDENTS: '导入学生名单', CREATE_COURSE: '新建课程', UPDATE_COURSE: '修改课程与排课',
   COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '停止课程报名', COURSE_ARCHIVE: '归档课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
   ENROLL: '学生报名', WITHDRAW: '学生退课', STAFF_ENROLL: '教务代报名', STAFF_WITHDRAW: '教务代退课',
 };
+const AUDIT_TARGET_TEXT = { course: '课程', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', venues: '场地', categories: '课程分类', 'time-slots': '时间段' };
 
 function useAdminLoad(loader, dependencies = []) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
@@ -120,5 +121,8 @@ export function AdminSettingsPage({ api, toast }) {
   async function save() { try { await api.updateAdminConfigs(draft.map(({ key, value }) => ({ key, value }))); toast('选课规则已保存'); reload(); } catch (error) { toast(error.message, 'error'); } }
   if (state.loading) return <Loading />;
   if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
-  return <><PageHeader eyebrow="使用中文维护系统规则" title="选课规则与操作记录" description="规则修改后立即生效。建议在开放报名之前统一检查一次。" /><div className="settings-grid"><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">选课限制</p><h2>规则设置</h2></div><button className="primary-compact" onClick={save}>保存规则</button></div><div className="config-list">{draft.map((item, index) => { const [label, help] = CONFIG_TEXT[item.key] || [item.key, '']; return <label key={item.key}><span><strong>{label}</strong><small>{help}</small></span>{item.type === 'bool' ? <select value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))}><option value="true">允许</option><option value="false">不允许</option></select> : <input type="number" min="0" value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} />}</label>; })}</div></section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">最近 50 条</p><h2>操作记录</h2></div></div><div className="audit-list">{state.data.audit.length ? state.data.audit.map((item) => <div key={item.id}><span><strong>{AUDIT_TEXT[item.action] || item.action}</strong><small>记录编号 {item.id}</small></span><time>{formatDate(item.created_at)}</time></div>) : <Empty title="暂无操作记录" />}</div></section></div></>;
+  const ruleGroups = ['学生选课', '退课处理', '账号安全'];
+  const valueOf = (key, fallback) => draft.find((item) => item.key === key)?.value ?? fallback;
+  const summary = `每名学生最多选 ${valueOf('student.max_active_courses', 2)} 门；同类课程${valueOf('student.max_courses_per_category', 0) === '0' ? '不限数量' : `最多 ${valueOf('student.max_courses_per_category', 0)} 门`}；开课后${valueOf('enrollment.allow_withdraw_after_start', 'false') === 'true' ? '允许学生自行退课' : '只能由教务处理退课'}。`;
+  return <><PageHeader eyebrow="老师也能直接看懂和修改" title="规则与操作记录" description="这里控制学生能选几门课、能否退课以及账号安全。修改后点击保存才会生效。" /><div className="rule-summary"><strong>当前规则</strong><span>{summary}</span></div><div className="settings-grid"><section className="paper-card rules-card"><div className="card-title"><div><p className="eyebrow ink">用问答方式设置</p><h2>选课规则</h2></div><button className="primary-compact" onClick={save}>保存全部修改</button></div>{ruleGroups.map((group) => <section className="rule-group" key={group}><h3>{group}</h3><div className="config-list">{draft.map((item, index) => ({ item, index, text: CONFIG_TEXT[item.key] })).filter((entry) => entry.text?.group === group).map(({ item, index, text }) => <label key={item.key}><span><strong>{text.label}</strong><small>{text.help}</small></span><span className="rule-control">{item.type === 'bool' ? <select value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))}><option value="true">允许</option><option value="false">不允许</option></select> : <input type="number" min="0" value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} />}{text.unit ? <small>{text.unit}</small> : null}</span></label>)}</div></section>)}</section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">谁在什么时候做了什么</p><h2>最近操作</h2></div><span>最近 100 条</span></div><div className="audit-list readable-audit">{state.data.audit.length ? state.data.audit.map((item) => <div key={item.id}><span><strong><b>{item.actor_name || '系统'}</b> · {AUDIT_TEXT[item.action] || '进行了系统操作'}</strong><small>{item.target_name ? `${AUDIT_TARGET_TEXT[item.target_type] || '对象'}：${item.target_name}` : AUDIT_TARGET_TEXT[item.target_type] || '系统记录'}</small></span><time>{formatDate(item.created_at)}</time></div>) : <Empty title="暂无操作记录" />}</div></section></div></>;
 }

@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "load-test": "node tools/load-test.js",
+    "consistency-test": "node tools/consistency-test.js",
     "reset": "node -e \"require('fs').existsSync('data.json')&&require('fs').unlinkSync('data.json');console.log('已删除本地 data.json（MySQL 模式下下次启动会重新种子）')\"",
     "reset-db": "node tools/reset.js"
   },
@@ -14,7 +17,8 @@
   },
   "license": "MIT",
   "dependencies": {
-    "mysql2": "^3.23.2"
+    "mysql2": "^3.23.2",
+    "redis": "5.8.2"
   },
   "optionalDependencies": {
     "@cloudbase/node-sdk": "^4.0.2"

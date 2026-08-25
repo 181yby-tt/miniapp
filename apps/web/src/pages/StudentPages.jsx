@@ -17,24 +17,36 @@ function useLoad(loader, dependencies = []) {
 export function CoursesPage({ api, toast }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
-  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [pendingId, setPendingId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [state] = useLoad(async () => {
-    const [courses, mine] = await Promise.all([api.getCourses({ query, category }), api.getEnrollments()]);
+    const [courses, mine] = await Promise.all([api.getCourses({}), api.getEnrollments()]);
     return { ...courses, mine };
-  }, [query, category, refreshKey]);
+  }, [refreshKey]);
 
   async function enroll(id) {
-    try { await api.enroll(id, makeIdempotencyKey()); toast('报名成功'); setRefreshKey((key) => key + 1); }
+    if (pendingId) return;
+    setPendingId(id);
+    try { await api.enroll(id, makeIdempotencyKey()); toast('报名成功，课程已加入“我的课程”'); setRefreshKey((key) => key + 1); }
     catch (error) { toast(error.message, 'error'); }
+    finally { setPendingId(null); }
   }
-  const items = (state.data?.items || []).filter((course) => !onlyAvailable || course.remaining > 0);
+  const normalizedQuery = query.trim().toLowerCase();
+  const items = (state.data?.items || []).filter((course) => {
+    if (category && course.category !== category) return false;
+    if (filter === 'available' && (course.remaining <= 0 || course.enrolled)) return false;
+    if (filter === 'enrolled' && !course.enrolled) return false;
+    return !normalizedQuery || `${course.name}${course.teachers?.join('')}${course.category}`.toLowerCase().includes(normalizedQuery);
+  });
+  const mineCount = state.data?.mine?.items?.length || 0;
   return <>
-    <PageHeader eyebrow="铁英中学 · 校本选修" title="课程大厅" description="报名成功后才会占用名额，余位会实时更新。" />
-    <section className="metric-grid compact-metrics"><Metric value={state.data?.mine?.items?.length ?? '—'} suffix={` / ${state.data?.mine?.max_active || 2}`} label="我的课程" /><Metric value={state.data?.items?.length ?? '—'} label="开放课程" /><Metric value="实时" label="余位状态" tone="accent" /></section>
-    <section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程或老师" /></div><button className={`filter-toggle ${onlyAvailable ? 'active' : ''}`} onClick={() => setOnlyAvailable((value) => !value)}>仅看有余位</button></section>
+    <PageHeader eyebrow="铁英中学 · 学生选课" title="选择本学期课程" description="先查看时间、老师和剩余名额，确认无冲突后再报名。重复点击不会重复占用名额。" />
+    <section className="metric-grid compact-metrics"><Metric value={mineCount} suffix={` / ${state.data?.mine?.max_active || 2}`} label="我已选择" /><Metric value={state.data?.items?.length ?? '—'} label="可选课程" /><Metric value={state.data ? state.data.items.filter((course) => course.remaining > 0).length : '—'} label="仍有名额" tone="accent" /></section>
+    <section className="course-guide"><strong>{mineCount ? `你已选择 ${mineCount} 门课程` : '你还没有选择课程'}</strong><span>{mineCount >= (state.data?.mine?.max_active || 2) ? '已经达到选课数量上限，如需调整请先到“我的课程”退课。' : `还可以再选 ${Math.max(0, (state.data?.mine?.max_active || 2) - mineCount)} 门，系统会自动检查时间冲突。`}</span></section>
+    <section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程、分类或老师" /></div><div className="segmented course-filters">{[['all', '全部课程'], ['available', '可以报名'], ['enrolled', '我已报名']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></section>
     <div className="chip-row"><button className={!category ? 'active' : ''} onClick={() => setCategory('')}>全部</button>{(state.data?.categories || []).map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div>
-    {state.loading ? <Loading label="正在整理课程" /> : state.error ? <ErrorState message={state.error} onRetry={() => setRefreshKey((key) => key + 1)} /> : items.length ? <section className="course-grid">{items.map((course) => <CourseCard key={course.id} course={course} onOpen={(id) => navigate(`/courses/${id}`)} onEnroll={enroll} />)}</section> : <Empty title="没有找到课程" description="换个关键词、分类或筛选条件试试。" />}
+    {state.loading ? <Loading label="正在整理课程" /> : state.error ? <ErrorState message={state.error} onRetry={() => setRefreshKey((key) => key + 1)} /> : items.length ? <section className="course-grid">{items.map((course) => <CourseCard key={course.id} course={course} pending={pendingId === course.id} onOpen={(id) => navigate(`/courses/${id}`)} onEnroll={enroll} />)}</section> : <Empty title="没有找到课程" description="换个关键词、分类或筛选条件试试。" />}
   </>;
 }
 

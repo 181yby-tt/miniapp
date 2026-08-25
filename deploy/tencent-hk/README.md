@@ -71,7 +71,21 @@ cd deploy/tencent-hk
 docker compose up -d --build
 ```
 
-应用容器可随时重建，业务数据保存在 `mysql_data` Docker 卷中。
+应用容器可随时重建，业务数据保存在 `mysql_data` Docker 卷中。Redis 只保存短时缓存、限流计数和学生操作锁，重启不会丢失业务数据。
+
+高并发写入时，Redis 负责把同一学生的重复操作串行化；MySQL 课程行条件更新与报名唯一索引负责最终一致性和防超卖。不要用 Redis 缓存代替 MySQL 业务数据。
+
+## GitHub 自动部署
+
+仓库包含 `.github/workflows/deploy.yml`。合并到 `master` 后会先运行测试和 Web 构建，通过后再更新服务器。
+
+生产环境需要配置以下 GitHub Secrets：
+
+- `DEPLOY_HOST`：服务器公网 IP
+- `DEPLOY_USER`：仅用于部署的 SSH 用户，当前为 `ubuntu`
+- `DEPLOY_SSH_KEY`：专用部署私钥，不要复用个人登录密钥
+
+工作流使用 `production` 环境和并发锁，同一时间只执行一次生产部署。
 
 ## 备份
 
