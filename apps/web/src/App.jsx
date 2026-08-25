@@ -3,7 +3,7 @@ import { createApiClient, createSessionStore, routeForSession } from '@kexu/clie
 import AppShell from './components/AppShell.jsx';
 import { LoginPage, ChangePasswordPage } from './pages/AuthPages.jsx';
 import { CourseDetailPage, CoursesPage, EnrollmentsPage, ProfilePage, SchedulePage } from './pages/StudentPages.jsx';
-import { AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
+import { AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSchedulePage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
 import { navigate, usePathname } from './runtime/browser.js';
 
 const sessionStore = createSessionStore(window.localStorage);
@@ -56,7 +56,9 @@ export default function App() {
   let page;
   if (isAdmin) {
     if (pathname === '/admin/courses') page = <AdminCoursesPage api={api} toast={toast} />;
+    else if (pathname === '/admin/schedule') page = <AdminSchedulePage api={api} toast={toast} />;
     else if (pathname === '/admin/students') page = <AdminStudentsPage api={api} toast={toast} />;
+    else if (pathname === '/admin/resources') page = <AdminResourcesPage api={api} toast={toast} />;
     else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
     else page = <AdminDashboardPage api={api} />;

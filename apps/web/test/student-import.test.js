@@ -18,13 +18,17 @@ test('parses common Chinese student headers and preserves numeric IDs', () => {
   });
 });
 
-test('accepts a student-number-only sheet and reports duplicates', () => {
-  const result = parseStudentSheet([['学号'], ['A001'], ['A001'], ['A002']]);
+test('reports duplicate student numbers', () => {
+  const result = parseStudentSheet([['学号', '姓名'], ['A001', '甲'], ['A001', '乙'], ['A002', '丙']]);
   assert.deepEqual(result.rows.map((row) => row.student_no), ['A001', 'A002']);
-  assert.equal(result.rows[0].name, 'A001');
+  assert.equal(result.rows[0].name, '甲');
   assert.equal(result.errors[0].row_number, 3);
 });
 
 test('requires a student number header', () => {
   assert.throws(() => parseStudentSheet([['姓名'], ['张三']]), /学号/);
+});
+
+test('requires a student name header', () => {
+  assert.throws(() => parseStudentSheet([['学号'], ['A001']]), /姓名/);
 });

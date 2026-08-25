@@ -31,6 +31,7 @@ export function parseStudentSheet(sheetRows) {
     const field = headerField(cell);
     if (field && indexes[field] === undefined) indexes[field] = index;
   });
+  if (indexes.name === undefined) throw new Error('Excel 需要包含“姓名”列');
 
   const parsed = [];
   const errors = [];
@@ -42,13 +43,14 @@ export function parseStudentSheet(sheetRows) {
     const item = {
       row_number: rowNumber,
       student_no: studentNo,
-      name: indexes.name === undefined ? studentNo : text(row[indexes.name]) || studentNo,
+      name: text(row[indexes.name]),
       grade: indexes.grade === undefined ? '未分组' : text(row[indexes.grade]) || '未分组',
       class_name: indexes.class_name === undefined ? '未分组' : text(row[indexes.class_name]) || '未分组',
       password: indexes.password === undefined ? '' : text(row[indexes.password]),
     };
 
     if (!studentNo) errors.push({ row_number: rowNumber, message: '学号为空' });
+    else if (!item.name) errors.push({ row_number: rowNumber, message: '姓名为空' });
     else if (studentNo.length > 32) errors.push({ row_number: rowNumber, message: '学号不能超过 32 个字符' });
     else if (seen.has(studentNo)) errors.push({ row_number: rowNumber, message: `学号 ${studentNo} 在文件中重复` });
     else if (item.password && item.password.length < 8) errors.push({ row_number: rowNumber, message: '初始密码至少 8 位' });
@@ -61,4 +63,3 @@ export function parseStudentSheet(sheetRows) {
   if (!parsed.length && !errors.length) throw new Error('Excel 中没有可导入的学生数据');
   return { rows: parsed, errors, header_row: headerIndex + 1 };
 }
-

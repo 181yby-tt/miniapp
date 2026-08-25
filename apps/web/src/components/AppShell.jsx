@@ -4,7 +4,7 @@ const studentItems = [
   ['/courses', '课程', '课'], ['/enrollments', '我的课程', '选'], ['/schedule', '课表', '表'], ['/profile', '我的', '我'],
 ];
 const adminItems = [
-  ['/admin', '总览', '览'], ['/admin/courses', '课程管理', '课'], ['/admin/students', '学生', '生'], ['/admin/enrollments', '报名记录', '录'], ['/admin/settings', '规则与日志', '规'],
+  ['/admin', '工作台', '首'], ['/admin/students', '学生管理', '生'], ['/admin/courses', '课程管理', '课'], ['/admin/schedule', '排课管理', '排'], ['/admin/resources', '基础数据', '基'], ['/admin/enrollments', '报名管理', '报'], ['/admin/settings', '规则与记录', '规'],
 ];
 
 export default function AppShell({ session, pathname, profile, onLogout, children }) {
@@ -15,7 +15,7 @@ export default function AppShell({ session, pathname, profile, onLogout, childre
     <div className={`product-shell ${isAdmin ? 'admin-mode' : ''}`}>
       <aside className="side-rail">
         <button className="logo-button" onClick={() => navigate(isAdmin ? '/admin' : '/courses')} aria-label="返回首页">课</button>
-        <div className="rail-brand"><strong>课序</strong><span>{isAdmin ? '教务管理端' : '校本选课平台'}</span></div>
+        <div className="rail-brand"><strong>选课排课</strong><span>{isAdmin ? '教务管理' : '学生选课'}</span></div>
         <nav className="primary-nav" aria-label="主导航">
           {items.map(([path, label, mark]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => navigate(path)}><span>{mark}</span>{label}</button>)}
         </nav>

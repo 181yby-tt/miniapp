@@ -1,7 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
+import CourseEditor from '../components/admin/CourseEditor.jsx';
+import CourseImportPanel from '../components/admin/CourseImportPanel.jsx';
+import StudentImportPanel from '../components/admin/StudentImportPanel.jsx';
 import { formatDate } from '../runtime/browser.js';
-import { parseStudentSheet } from '../utils/studentImport.js';
+
+const CONFIG_TEXT = {
+  'student.max_active_courses': ['每名学生最多可选课程数', '达到数量后不能继续报名'],
+  'student.max_courses_per_category': ['同一分类最多可选课程数', '填 0 表示不限制'],
+  'enrollment.allow_withdraw_after_start': ['开课后允许学生退课', '关闭后只能由教务人员处理'],
+  'enrollment.allow_reenroll': ['退课后允许再次报名', '控制学生是否可以重新选择同一课程'],
+  'security.password_min_length': ['密码最少位数', '建议不少于 8 位'],
+  'security.login_max_failures': ['连续输错密码次数上限', '达到上限后账号会暂时锁定'],
+  'security.lock_minutes': ['账号锁定时长（分钟）', '超过时长后自动解锁'],
+};
+const AUDIT_TEXT = {
+  CHANGE_PASSWORD: '修改密码', IMPORT_STUDENTS: '导入学生名单', CREATE_COURSE: '新建课程', UPDATE_COURSE: '修改课程与排课',
+  COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '停止课程报名', COURSE_ARCHIVE: '归档课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
+  ENROLL: '学生报名', WITHDRAW: '学生退课', STAFF_ENROLL: '教务代报名', STAFF_WITHDRAW: '教务代退课',
+};
 
 function useAdminLoad(loader, dependencies = []) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
@@ -17,74 +34,91 @@ function useAdminLoad(loader, dependencies = []) {
 export function AdminDashboardPage({ api }) {
   const [state, reload] = useAdminLoad(() => api.getAdminDashboard(), []);
   const data = state.data;
-  return <><PageHeader eyebrow="教务工作台" title="运行总览" description="课程、学生、名额和风险状态集中在这里。" />{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : <><section className="metric-grid admin-metrics"><Metric value={data.students} label="学生总数" /><Metric value={data.open_courses} label="开放课程" /><Metric value={data.active_enrollments} label="有效报名" /><Metric value={`${data.fill_rate}%`} label="总体满班率" tone="accent" /></section><div className="dashboard-grid"><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">容量观察</p><h2>热门课程</h2></div><span>{data.remaining_seats} 个余位</span></div>{(data.top_fill_courses || []).map((course) => <div className="fill-row" key={course.id}><div><strong>{course.name}</strong><span>{course.active_count}/{course.capacity}</span></div><div className="seat-track"><i style={{ width: `${course.fill}%` }} /></div></div>)}</section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">待关注</p><h2>运行提醒</h2></div></div><div className="signal-grid"><div><strong>{data.near_full_courses?.length || 0}</strong><span>接近满员</span></div><div><strong>{data.conflict_courses || 0}</strong><span>冲突课程</span></div><div><strong>{data.students_need_pwd || 0}</strong><span>待改初始密码</span></div><div><strong>{data.full_courses || 0}</strong><span>已满课程</span></div></div></section><section className="paper-card span-two"><div className="card-title"><div><p className="eyebrow ink">最新动态</p><h2>最近报名</h2></div></div>{data.recent_enrollments?.length ? <div className="data-table"><div className="table-row table-head"><span>学生</span><span>课程</span><span>时间</span></div>{data.recent_enrollments.map((item, index) => <div className="table-row" key={index}><span><strong>{item.name}</strong><small>{item.student_no}</small></span><span>{item.course_name}</span><span>{formatDate(item.enrolled_at)}</span></div>)}</div> : <Empty title="暂无报名动态" />}</section></div></>}</>;
+  if (state.loading) return <Loading />;
+  if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
+  return <>
+    <PageHeader eyebrow="教务工作台" title="选课排课总览" description="先维护学生和课程，再完成排课，最后开放学生报名。" />
+    <section className="metric-grid admin-metrics"><Metric value={data.students} label="学生人数" /><Metric value={data.total_courses} label="课程总数" /><Metric value={data.open_courses} label="正在报名" /><Metric value={data.conflict_courses} label="存在排课冲突" tone="accent" /></section>
+    <div className="workflow-steps"><div><b>1</b><strong>导入学生</strong><span>生成学生账号和初始密码</span></div><div><b>2</b><strong>建立课程</strong><span>手动创建或 Excel 批量导入</span></div><div><b>3</b><strong>完成排课</strong><span>安排教师、时间和场地</span></div><div><b>4</b><strong>开放报名</strong><span>学生登录后自主选课</span></div></div>
+    <div className="dashboard-grid"><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">报名情况</p><h2>热门课程</h2></div><span>剩余 {data.remaining_seats} 个名额</span></div>{data.top_fill_courses?.length ? data.top_fill_courses.map((course) => <div className="fill-row" key={course.id}><div><strong>{course.name}</strong><span>{course.active_count}/{course.capacity}</span></div><div className="seat-track"><i style={{ width: `${course.fill}%` }} /></div></div>) : <Empty title="还没有开放报名的课程" />}</section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">需要处理</p><h2>教务提醒</h2></div></div><div className="signal-grid"><div><strong>{data.draft_courses}</strong><span>草稿课程</span></div><div><strong>{data.conflict_courses}</strong><span>排课冲突</span></div><div><strong>{data.students_need_pwd}</strong><span>学生尚未修改初始密码</span></div><div><strong>{data.full_courses}</strong><span>课程已满</span></div></div></section></div>
+  </>;
 }
 
 export function AdminCoursesPage({ api, toast }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('ALL');
-  const [state] = useAdminLoad(() => api.getAdminCourses(), [refreshKey]);
-  const items = useMemo(() => (state.data?.items || []).filter((course) => (status === 'ALL' || course.status === status) && `${course.name}${course.teachers?.join('')}`.toLowerCase().includes(query.toLowerCase())), [state.data, query, status]);
+  const [editorCourse, setEditorCourse] = useState(undefined);
+  const [state] = useAdminLoad(async () => {
+    const [courses, meta] = await Promise.all([api.getAdminCourses(), api.getAdminMeta()]);
+    return { courses: courses.items, meta };
+  }, [refreshKey]);
+  const items = useMemo(() => (state.data?.courses || []).filter((course) => (status === 'ALL' || course.status === status) && `${course.name}${course.teachers?.join('')}`.toLowerCase().includes(query.toLowerCase())), [state.data, query, status]);
+  const refresh = () => { setEditorCourse(undefined); setRefreshKey((key) => key + 1); };
   async function changeStatus(course, action) {
     const labels = { open: '开放报名', close: '停止报名', archive: '归档' };
     if (!window.confirm(`确认将“${course.name}”设为${labels[action]}吗？`)) return;
-    try { await api.setCourseStatus(course.id, action); toast('课程状态已更新'); setRefreshKey((key) => key + 1); }
+    try { await api.setCourseStatus(course.id, action); toast('课程状态已更新'); refresh(); }
     catch (error) { toast(error.message, 'error'); }
   }
-  return <><PageHeader eyebrow="教务管理" title="课程管理" description="查看课程容量、发布状态和排课信息。" /><section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程或教师" /></div><div className="chip-row inline">{['ALL', 'OPEN', 'DRAFT', 'CLOSED', 'ARCHIVED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部' : <StatusPill status={item} />}</button>)}</div></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={() => setRefreshKey((key) => key + 1)} /> : items.length ? <div className="admin-course-grid">{items.map((course) => <article className="admin-course-card" key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>{course.teachers?.join('、') || '教师待定'} · {course.schedules?.map((item) => item.slot_name).join('、') || '时间待定'}</p></div><strong>{course.active_count}<small> / {course.capacity}</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions">{course.status !== 'OPEN' ? <button onClick={() => changeStatus(course, 'open')}>开放报名</button> : <button onClick={() => changeStatus(course, 'close')}>停止报名</button>}<button disabled={course.status === 'ARCHIVED'} onClick={() => changeStatus(course, 'archive')}>归档</button></div></article>)}</div> : <Empty title="没有符合条件的课程" />}</>;
+  if (state.loading) return <Loading />;
+  if (state.error) return <ErrorState message={state.error} onRetry={refresh} />;
+  return <>
+    <PageHeader eyebrow="课程资料、教师与排课" title="课程管理" description="可以手动创建和编辑课程，也可以使用 Excel 批量导入。每门课程都能安排教师、上课时间、场地和报名范围。" action={<button className="primary-action" onClick={() => setEditorCourse(null)}>新建课程</button>} />
+    <CourseImportPanel api={api} courses={state.data.courses} meta={state.data.meta} toast={toast} onImported={refresh} />
+    <section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程或任课教师" /></div><div className="chip-row inline">{['ALL', 'OPEN', 'DRAFT', 'CLOSED', 'FINISHED', 'ARCHIVED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部课程' : <StatusPill status={item} />}</button>)}</div></section>
+    {items.length ? <div className="admin-course-grid">{items.map((course) => <article className="admin-course-card" key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>{course.teachers?.join('、') || '尚未安排教师'}</p><p>{course.schedules?.map((item) => `${item.slot_name} · ${item.venue_name}`).join('；') || '尚未排课'}</p></div><strong>{course.active_count}<small> / {course.capacity}</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions"><button onClick={() => setEditorCourse(course)}>编辑与排课</button>{course.status !== 'OPEN' ? <button onClick={() => changeStatus(course, 'open')}>开放报名</button> : <button onClick={() => changeStatus(course, 'close')}>停止报名</button>}<button disabled={course.status === 'ARCHIVED'} onClick={() => changeStatus(course, 'archive')}>归档</button></div></article>)}</div> : <Empty title="没有符合条件的课程" />}
+    {editorCourse !== undefined ? <CourseEditor api={api} course={editorCourse} meta={state.data.meta} toast={toast} onClose={() => setEditorCourse(undefined)} onSaved={refresh} /> : null}
+  </>;
+}
+
+export function AdminSchedulePage({ api, toast }) {
+  const [state, reload] = useAdminLoad(async () => { const [courses, meta] = await Promise.all([api.getAdminCourses(), api.getAdminMeta()]); return { courses: courses.items, meta }; }, []);
+  const [editorCourse, setEditorCourse] = useState(undefined);
+  if (state.loading) return <Loading />;
+  if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
+  const dayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const weekdays = [...new Set(state.data.meta.time_slots.map((slot) => Number(slot.weekday)))].sort((a, b) => a - b);
+  const periods = [...new Set(state.data.meta.time_slots.map((slot) => slot.period))].sort((a, b) => a - b);
+  const byCell = (weekday, period) => state.data.courses.filter((course) => course.schedules?.some((item) => Number(item.weekday) === weekday && Number(item.period) === period));
+  const hasConflict = (courses, weekday, period) => courses.some((course, index) => courses.slice(index + 1).some((other) => {
+    const sharedTeacher = course.teacher_ids.some((id) => other.teacher_ids.includes(id));
+    const venues = course.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period).map((item) => item.venue_id);
+    const otherVenues = other.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period).map((item) => item.venue_id);
+    return sharedTeacher || venues.some((id) => otherVenues.includes(id));
+  }));
+  return <><PageHeader eyebrow="查看全校课表并处理冲突" title="排课管理" description="按星期和节次查看所有课程。点击课程即可调整任课教师、时间或场地。红色格表示教师或场地冲突。" /><div className="admin-schedule" style={{ gridTemplateColumns: `90px repeat(${weekdays.length}, minmax(180px, 1fr))` }}><div className="schedule-corner">节次</div>{weekdays.map((weekday) => <div className="schedule-column-head" key={weekday}>{dayNames[weekday]}</div>)}{periods.map((period) => [<div className="schedule-period" key={`p-${period}`}>第 {period} 节</div>, ...weekdays.map((weekday) => { const courses = byCell(weekday, period); return <div className={`admin-schedule-cell ${hasConflict(courses, weekday, period) ? 'busy' : ''}`} key={`${weekday}-${period}`}>{courses.map((course) => { const schedules = course.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period); return <button key={course.id} onClick={() => setEditorCourse(course)}><strong>{course.name}</strong><span>{course.teachers.join('、') || '教师待定'}</span><span>{schedules.map((item) => item.venue_name).join('、')}</span></button>; })}</div>; })])}</div>{editorCourse !== undefined ? <CourseEditor api={api} course={editorCourse} meta={state.data.meta} toast={toast} onClose={() => setEditorCourse(undefined)} onSaved={() => { setEditorCourse(undefined); reload(); }} /> : null}</>;
 }
 
 export function AdminStudentsPage({ api, toast }) {
   const [query, setQuery] = useState('');
   const [state, reload] = useAdminLoad(() => api.getAdminStudents(), []);
-  const [preview, setPreview] = useState(null);
-  const [fileName, setFileName] = useState('');
-  const [defaultPassword, setDefaultPassword] = useState('12345678');
-  const [resetExisting, setResetExisting] = useState(false);
-  const [importing, setImporting] = useState(false);
   const items = (state.data?.items || []).filter((item) => `${item.student_no}${item.name}${item.grade}${item.class_name}`.includes(query));
-  async function chooseFile(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) return toast('Excel 文件不能超过 10MB', 'error');
-    try {
-      const { readSheet } = await import('read-excel-file/browser');
-      const parsed = parseStudentSheet(await readSheet(file));
-      setFileName(file.name); setPreview(parsed);
-    } catch (error) {
-      setFileName(''); setPreview(null); toast(error.message || '无法读取 Excel 文件', 'error');
-    }
-  }
-  async function runImport() {
-    if (!preview?.rows.length) return;
-    if (defaultPassword.length < 8) return toast('统一初始密码至少 8 位', 'error');
-    setImporting(true);
-    try {
-      const result = await api.importAdminStudents({ rows: preview.rows, default_password: defaultPassword, reset_existing_password: resetExisting });
-      toast(`导入完成：新增 ${result.created} 名，更新 ${result.updated} 名`);
-      setPreview(null); setFileName(''); reload();
-    } catch (error) { toast(error.message, 'error'); }
-    finally { setImporting(false); }
-  }
-  return <><PageHeader eyebrow="名单与账号" title="学生" description="按学号、姓名、年级或班级查询学生。" /><section className="student-import-card"><div><p className="eyebrow ink">批量建档</p><h2>从 Excel 导入学生</h2><p>支持 .xlsx，识别学号、姓名、年级、班级和初始密码。只含“学号”列也可以导入。</p></div><label className="upload-button">选择 Excel<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} /></label>{preview ? <div className="import-preview"><div className="import-summary"><strong>{fileName}</strong><span>{preview.rows.length} 行可导入 · {preview.errors.length} 行需修正</span></div><label><span>统一初始密码</span><input type="text" value={defaultPassword} onChange={(event) => setDefaultPassword(event.target.value)} /><small>Excel 中未填写初始密码时使用；首次登录必须修改。</small></label><label className="check-line"><input type="checkbox" checked={resetExisting} onChange={(event) => setResetExisting(event.target.checked)} /><span>同时重置已存在学生的密码</span></label>{preview.errors.length ? <div className="import-errors"><strong>未导入的行</strong>{preview.errors.slice(0, 8).map((error) => <span key={`${error.row_number}-${error.message}`}>第 {error.row_number} 行：{error.message}</span>)}{preview.errors.length > 8 ? <span>另有 {preview.errors.length - 8} 行错误</span> : null}</div> : null}<div className="import-sample"><span>预览</span>{preview.rows.slice(0, 5).map((student) => <span key={student.student_no}><strong>{student.student_no}</strong>{student.name} · {student.grade} · {student.class_name}</span>)}</div><button className="primary-compact" disabled={importing || !preview.rows.length} onClick={runImport}>{importing ? '正在导入…' : `确认导入 ${preview.rows.length} 名学生`}</button></div> : null}</section><div className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或班级" /></div><span className="toolbar-count">{items.length} 名学生</span></div>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>学生</span><span>年级班级</span><span>已选课程</span><span>账号状态</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /></span></div>)}</div> : <Empty title="没有找到学生" />}</>;
+  return <><PageHeader eyebrow="学生资料、账号与班级" title="学生管理" description="先导入学生资料，系统会自动生成登录账号和初始密码。导入完成后，学生会进入下方名单。" /><StudentImportPanel api={api} toast={toast} onImported={reload} /><div className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名、年级或班级" /></div><span className="toolbar-count">{items.length} 名学生</span></div>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>姓名与登录账号</span><span>年级班级</span><span>已选课程</span><span>账号状态</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>登录账号：{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /></span></div>)}</div> : <Empty title="还没有学生资料" description="请先上传学生 Excel 名单。" />}</>;
+}
+
+export function AdminResourcesPage({ api, toast }) {
+  const [state, reload] = useAdminLoad(() => api.getAdminMeta(), []);
+  const [draft, setDraft] = useState({ staff: '', venues: '', categories: '', slot_name: '', weekday: 1, period: 1 });
+  async function add(type, payload, clearKey) { try { await api.createAdminMeta(type, payload); toast('基础数据已添加'); setDraft((current) => ({ ...current, [clearKey]: '' })); reload(); } catch (error) { toast(error.message, 'error'); } }
+  if (state.loading) return <Loading />;
+  if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
+  const groups = [['staff', '教师名单', state.data.staff, '输入教师姓名', () => add('staff', { name: draft.staff }, 'staff')], ['venues', '上课场地', state.data.venues, '输入教室或场地名称', () => add('venues', { name: draft.venues }, 'venues')], ['categories', '课程分类', state.data.categories, '输入课程分类名称', () => add('categories', { name: draft.categories }, 'categories')]];
+  return <><PageHeader eyebrow="排课前需要维护的资料" title="基础数据" description="教师、场地、课程分类和时间段会出现在课程创建与排课下拉框中。" /><div className="resource-grid">{groups.map(([key, title, items, placeholder, action]) => <section className="paper-card" key={key}><div className="card-title"><h2>{title}</h2><span>{items.length} 项</span></div><div className="inline-create"><input value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} /><button onClick={action} disabled={!draft[key].trim()}>添加</button></div><div className="resource-list">{items.map((item) => <span key={item.id}>{item.name}<small>{item.staff_no || ''}</small></span>)}</div></section>)}</div><section className="paper-card slot-resource"><div className="card-title"><div><h2>上课时间段</h2><span>按星期和节次定义</span></div></div><div className="slot-create"><input value={draft.slot_name} onChange={(event) => setDraft((current) => ({ ...current, slot_name: event.target.value }))} placeholder="例如：周一第 9 节" /><select value={draft.weekday} onChange={(event) => setDraft((current) => ({ ...current, weekday: Number(event.target.value) }))}>{['一', '二', '三', '四', '五', '六', '日'].map((day, index) => <option key={day} value={index + 1}>周{day}</option>)}</select><input type="number" min="1" max="20" value={draft.period} onChange={(event) => setDraft((current) => ({ ...current, period: Number(event.target.value) }))} /><button onClick={() => add('time-slots', { name: draft.slot_name, weekday: draft.weekday, period: draft.period }, 'slot_name')} disabled={!draft.slot_name.trim()}>添加时间段</button></div><div className="resource-list wide">{state.data.time_slots.map((item) => <span key={item.id}>{item.name}</span>)}</div></section></>;
 }
 
 export function AdminEnrollmentsPage({ api }) {
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('ALL');
+  const [query, setQuery] = useState(''); const [status, setStatus] = useState('ALL');
   const [state, reload] = useAdminLoad(() => api.getAdminEnrollments({ query, status }), [query, status]);
-  return <><PageHeader eyebrow="报名流水" title="报名记录" description="追踪学生自助报名和管理员操作记录。" /><section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或课程" /></div><div className="chip-row inline">{['ALL', 'ENROLLED', 'WITHDRAWN', 'CANCELLED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部' : <StatusPill status={item} />}</button>)}</div></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : state.data.items.length ? <div className="responsive-table enrollment-table"><div className="table-row table-head"><span>课程</span><span>学生</span><span>状态</span><span>来源</span><span>时间</span></div>{state.data.items.map((item) => <div className="table-row" key={item.enrollment_id}><span><strong>{item.course_name}</strong></span><span>{item.student_name}<small>{item.student_no}</small></span><span><StatusPill status={item.status} /></span><span>{item.source === 'STUDENT' ? '学生自助' : '管理员代报'}</span><span>{formatDate(item.enrolled_at)}</span></div>)}</div> : <Empty title="暂无报名记录" />}</>;
+  return <><PageHeader eyebrow="学生报名和退课记录" title="报名管理" description="按学生、学号或课程查询报名结果。" /><section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或课程" /></div><div className="chip-row inline">{['ALL', 'ENROLLED', 'WITHDRAWN', 'CANCELLED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部记录' : <StatusPill status={item} />}</button>)}</div></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : state.data.items.length ? <div className="responsive-table enrollment-table"><div className="table-row table-head"><span>课程</span><span>学生</span><span>状态</span><span>操作来源</span><span>时间</span></div>{state.data.items.map((item) => <div className="table-row" key={item.enrollment_id}><span><strong>{item.course_name}</strong></span><span>{item.student_name}<small>{item.student_no}</small></span><span><StatusPill status={item.status} /></span><span>{item.source === 'STUDENT' ? '学生自行操作' : '教务人员操作'}</span><span>{formatDate(item.enrolled_at)}</span></div>)}</div> : <Empty title="暂无报名记录" />}</>;
 }
 
 export function AdminSettingsPage({ api, toast }) {
-  const [state, reload] = useAdminLoad(async () => {
-    const [configs, audit] = await Promise.all([api.getAdminConfigs(), api.getAdminAudit()]);
-    return { configs: configs.items, audit: audit.items };
-  }, []);
+  const [state, reload] = useAdminLoad(async () => { const [configs, audit] = await Promise.all([api.getAdminConfigs(), api.getAdminAudit()]); return { configs: configs.items, audit: audit.items }; }, []);
   const [draft, setDraft] = useState([]);
   useEffect(() => { if (state.data?.configs) setDraft(state.data.configs); }, [state.data]);
-  async function save() { try { await api.updateAdminConfigs(draft.map(({ key, value }) => ({ key, value }))); toast('规则配置已保存'); reload(); } catch (error) { toast(error.message, 'error'); } }
-  return <><PageHeader eyebrow="系统治理" title="规则与日志" description="集中管理选课规则并审阅关键操作。" />{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : <div className="settings-grid"><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">运行规则</p><h2>业务配置</h2></div><button className="primary-compact" onClick={save}>保存配置</button></div><div className="config-list">{draft.map((item, index) => <label key={item.key}><span><strong>{item.key}</strong><small>{item.type}</small></span><input value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} /></label>)}</div></section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">最近 50 条</p><h2>操作审计</h2></div></div><div className="audit-list">{state.data.audit.length ? state.data.audit.map((item) => <div key={item.id}><span><strong>{item.action}</strong><small>{item.target_type} #{item.target_id}</small></span><time>{formatDate(item.created_at)}</time></div>) : <Empty title="暂无日志" />}</div></section></div>}</>;
+  async function save() { try { await api.updateAdminConfigs(draft.map(({ key, value }) => ({ key, value }))); toast('选课规则已保存'); reload(); } catch (error) { toast(error.message, 'error'); } }
+  if (state.loading) return <Loading />;
+  if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
+  return <><PageHeader eyebrow="使用中文维护系统规则" title="选课规则与操作记录" description="规则修改后立即生效。建议在开放报名之前统一检查一次。" /><div className="settings-grid"><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">选课限制</p><h2>规则设置</h2></div><button className="primary-compact" onClick={save}>保存规则</button></div><div className="config-list">{draft.map((item, index) => { const [label, help] = CONFIG_TEXT[item.key] || [item.key, '']; return <label key={item.key}><span><strong>{label}</strong><small>{help}</small></span>{item.type === 'bool' ? <select value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))}><option value="true">允许</option><option value="false">不允许</option></select> : <input type="number" min="0" value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} />}</label>; })}</div></section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">最近 50 条</p><h2>操作记录</h2></div></div><div className="audit-list">{state.data.audit.length ? state.data.audit.map((item) => <div key={item.id}><span><strong>{AUDIT_TEXT[item.action] || item.action}</strong><small>记录编号 {item.id}</small></span><time>{formatDate(item.created_at)}</time></div>) : <Empty title="暂无操作记录" />}</div></section></div></>;
 }

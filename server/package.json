@@ -1,7 +1,7 @@
 {
   "name": "kexu-server",
   "version": "1.0.0",
-  "description": "课序 选课排课系统后端（文件 / CloudBase MySQL SDK 网关 / MySQL 直连持久化）",
+  "description": "选课排课系统后端（文件 / CloudBase MySQL SDK 网关 / MySQL 直连持久化）",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
