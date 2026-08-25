@@ -90,6 +90,7 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
     getAdminCourses: () => request('/api/admin/courses'),
     setCourseStatus: (id, action) => request(`/api/admin/courses/${id}/${action}`, { method: 'POST', body: {} }),
     getAdminStudents: (query = '') => request(`/api/admin/students${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+    importAdminStudents: (payload) => request('/api/admin/students/import', { method: 'POST', body: payload }),
     getAdminEnrollments: ({ query = '', status = 'ENROLLED' } = {}) => {
       const params = new URLSearchParams({ status });
       if (query) params.set('q', query);

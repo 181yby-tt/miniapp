@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
 import { formatDate } from '../runtime/browser.js';
+import { parseStudentSheet } from '../utils/studentImport.js';
 
 function useAdminLoad(loader, dependencies = []) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
@@ -34,11 +35,40 @@ export function AdminCoursesPage({ api, toast }) {
   return <><PageHeader eyebrow="教务管理" title="课程管理" description="查看课程容量、发布状态和排课信息。" /><section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程或教师" /></div><div className="chip-row inline">{['ALL', 'OPEN', 'DRAFT', 'CLOSED', 'ARCHIVED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部' : <StatusPill status={item} />}</button>)}</div></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={() => setRefreshKey((key) => key + 1)} /> : items.length ? <div className="admin-course-grid">{items.map((course) => <article className="admin-course-card" key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>{course.teachers?.join('、') || '教师待定'} · {course.schedules?.map((item) => item.slot_name).join('、') || '时间待定'}</p></div><strong>{course.active_count}<small> / {course.capacity}</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions">{course.status !== 'OPEN' ? <button onClick={() => changeStatus(course, 'open')}>开放报名</button> : <button onClick={() => changeStatus(course, 'close')}>停止报名</button>}<button disabled={course.status === 'ARCHIVED'} onClick={() => changeStatus(course, 'archive')}>归档</button></div></article>)}</div> : <Empty title="没有符合条件的课程" />}</>;
 }
 
-export function AdminStudentsPage({ api }) {
+export function AdminStudentsPage({ api, toast }) {
   const [query, setQuery] = useState('');
   const [state, reload] = useAdminLoad(() => api.getAdminStudents(), []);
+  const [preview, setPreview] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [defaultPassword, setDefaultPassword] = useState('12345678');
+  const [resetExisting, setResetExisting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const items = (state.data?.items || []).filter((item) => `${item.student_no}${item.name}${item.grade}${item.class_name}`.includes(query));
-  return <><PageHeader eyebrow="名单与账号" title="学生" description="按学号、姓名、年级或班级查询学生。" /><div className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或班级" /></div><span className="toolbar-count">{items.length} 名学生</span></div>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>学生</span><span>年级班级</span><span>已选课程</span><span>账号状态</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /></span></div>)}</div> : <Empty title="没有找到学生" />}</>;
+  async function chooseFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) return toast('Excel 文件不能超过 10MB', 'error');
+    try {
+      const { readSheet } = await import('read-excel-file/browser');
+      const parsed = parseStudentSheet(await readSheet(file));
+      setFileName(file.name); setPreview(parsed);
+    } catch (error) {
+      setFileName(''); setPreview(null); toast(error.message || '无法读取 Excel 文件', 'error');
+    }
+  }
+  async function runImport() {
+    if (!preview?.rows.length) return;
+    if (defaultPassword.length < 8) return toast('统一初始密码至少 8 位', 'error');
+    setImporting(true);
+    try {
+      const result = await api.importAdminStudents({ rows: preview.rows, default_password: defaultPassword, reset_existing_password: resetExisting });
+      toast(`导入完成：新增 ${result.created} 名，更新 ${result.updated} 名`);
+      setPreview(null); setFileName(''); reload();
+    } catch (error) { toast(error.message, 'error'); }
+    finally { setImporting(false); }
+  }
+  return <><PageHeader eyebrow="名单与账号" title="学生" description="按学号、姓名、年级或班级查询学生。" /><section className="student-import-card"><div><p className="eyebrow ink">批量建档</p><h2>从 Excel 导入学生</h2><p>支持 .xlsx，识别学号、姓名、年级、班级和初始密码。只含“学号”列也可以导入。</p></div><label className="upload-button">选择 Excel<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} /></label>{preview ? <div className="import-preview"><div className="import-summary"><strong>{fileName}</strong><span>{preview.rows.length} 行可导入 · {preview.errors.length} 行需修正</span></div><label><span>统一初始密码</span><input type="text" value={defaultPassword} onChange={(event) => setDefaultPassword(event.target.value)} /><small>Excel 中未填写初始密码时使用；首次登录必须修改。</small></label><label className="check-line"><input type="checkbox" checked={resetExisting} onChange={(event) => setResetExisting(event.target.checked)} /><span>同时重置已存在学生的密码</span></label>{preview.errors.length ? <div className="import-errors"><strong>未导入的行</strong>{preview.errors.slice(0, 8).map((error) => <span key={`${error.row_number}-${error.message}`}>第 {error.row_number} 行：{error.message}</span>)}{preview.errors.length > 8 ? <span>另有 {preview.errors.length - 8} 行错误</span> : null}</div> : null}<div className="import-sample"><span>预览</span>{preview.rows.slice(0, 5).map((student) => <span key={student.student_no}><strong>{student.student_no}</strong>{student.name} · {student.grade} · {student.class_name}</span>)}</div><button className="primary-compact" disabled={importing || !preview.rows.length} onClick={runImport}>{importing ? '正在导入…' : `确认导入 ${preview.rows.length} 名学生`}</button></div> : null}</section><div className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或班级" /></div><span className="toolbar-count">{items.length} 名学生</span></div>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>学生</span><span>年级班级</span><span>已选课程</span><span>账号状态</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /></span></div>)}</div> : <Empty title="没有找到学生" />}</>;
 }
 
 export function AdminEnrollmentsPage({ api }) {

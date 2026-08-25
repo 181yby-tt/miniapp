@@ -56,7 +56,7 @@ export default function App() {
   let page;
   if (isAdmin) {
     if (pathname === '/admin/courses') page = <AdminCoursesPage api={api} toast={toast} />;
-    else if (pathname === '/admin/students') page = <AdminStudentsPage api={api} />;
+    else if (pathname === '/admin/students') page = <AdminStudentsPage api={api} toast={toast} />;
     else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
     else page = <AdminDashboardPage api={api} />;

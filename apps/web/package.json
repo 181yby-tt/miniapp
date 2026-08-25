@@ -11,7 +11,8 @@
   "dependencies": {
     "@kexu/client-core": "1.0.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "read-excel-file": "^9.3.10"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.2",
