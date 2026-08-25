@@ -31,32 +31,17 @@ jobs:
       - name: Configure dedicated deployment key
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy merged master
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" '
-            set -eu
-            cd /home/ubuntu/miniapp
-            git checkout master
-            git pull --ff-only origin master
-            cd deploy/tencent-hk
-            sudo docker compose up -d --build
-            sudo docker compose ps
-            for attempt in 1 2 3 4 5 6; do
-              if curl --fail --silent http://127.0.0.1/api/health >/dev/null; then
-                exit 0
-              fi
-              sleep 5
-            done
-            sudo docker compose logs --tail=80 app redis mysql
-            exit 1
-          '
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" deploy-miniapp
