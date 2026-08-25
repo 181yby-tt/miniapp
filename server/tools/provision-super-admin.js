@@ -19,7 +19,13 @@ async function main() {
   });
   try {
     await connection.beginTransaction();
-    await connection.query("ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `display_name` VARCHAR(64) NOT NULL DEFAULT '' AFTER `username`");
+    const [displayNameColumns] = await connection.query(
+      "SELECT 1 FROM `information_schema`.`columns` WHERE `table_schema`=? AND `table_name`='users' AND `column_name`='display_name' LIMIT 1",
+      [process.env.DB_NAME || 'kexu'],
+    );
+    if (!displayNameColumns.length) {
+      await connection.query("ALTER TABLE `users` ADD COLUMN `display_name` VARCHAR(64) NOT NULL DEFAULT '' AFTER `username`");
+    }
     const [rows] = await connection.query('SELECT `id` FROM `users` WHERE LOWER(`username`) = LOWER(?) LIMIT 1 FOR UPDATE', [username]);
     const passwordHash = hashPassword(password);
     if (rows.length) {
