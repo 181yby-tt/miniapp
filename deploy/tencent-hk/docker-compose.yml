@@ -18,12 +18,18 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: kexu
       TOKEN_SECRET: ${TOKEN_SECRET}
+      REDIS_URL: redis://redis:6379
+      RATE_LIMIT_GLOBAL_PER_SECOND: ${RATE_LIMIT_GLOBAL_PER_SECOND:-2500}
+      RATE_LIMIT_LOGIN_PER_ACCOUNT_PER_MINUTE: ${RATE_LIMIT_LOGIN_PER_ACCOUNT_PER_MINUTE:-10}
+      RATE_LIMIT_ENROLL_PER_10_SECONDS: ${RATE_LIMIT_ENROLL_PER_10_SECONDS:-10}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
       APPID: ${APPID:-}
       APPSECRET: ${APPSECRET:-}
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - internal
@@ -46,6 +52,18 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    networks:
+      - internal
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     networks:
       - internal
 

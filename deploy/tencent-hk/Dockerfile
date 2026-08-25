@@ -26,6 +26,7 @@ ENV DATA_FILE=/tmp/kexu-data.json
 COPY --from=dependencies --chown=node:node /app/server/node_modules ./server/node_modules
 COPY --from=web-build --chown=node:node /app/apps/web/dist ./apps/web/dist
 COPY --chown=node:node server/src ./server/src
+COPY --chown=node:node server/tools ./server/tools
 COPY --chown=node:node docs/schema.sql ./docs/schema.sql
 COPY --chown=node:node admin-console.html ./admin-console.html
 

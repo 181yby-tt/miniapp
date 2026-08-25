@@ -25,7 +25,7 @@ export function Metric({ value, suffix, label, tone = '' }) {
   return <div className={`metric ${tone}`}><div><strong>{value}</strong>{suffix ? <span>{suffix}</span> : null}</div><p>{label}</p></div>;
 }
 
-export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = false }) {
+export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = false, pending = false }) {
   const course = decorateCourse(rawCourse);
   const disabled = course.remaining <= 0 || course.enrolled;
   return (
@@ -34,7 +34,7 @@ export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = fals
       <div className="course-card-main">
         <div className="course-card-heading">
           <div><span className={`course-category tone-${course.tone}`}>{course.category || '校本课程'}</span><h3>{course.name}</h3></div>
-          {onEnroll ? <button className={`small-action ${course.enrolled ? 'success' : ''}`} disabled={disabled} onClick={(event) => { event.stopPropagation(); onEnroll(course.id); }}>{course.enrolled ? '已报名' : course.remaining > 0 ? '报名' : '已满'}</button> : null}
+          {onEnroll ? <button className={`small-action ${course.enrolled ? 'success' : ''}`} disabled={disabled || pending} onClick={(event) => { event.stopPropagation(); onEnroll(course.id); }}>{pending ? '报名中…' : course.enrolled ? '已报名' : course.remaining > 0 ? '报名' : '已满'}</button> : null}
         </div>
         <div className="course-meta"><span>{course.teacherText}</span><span>{course.timeText}</span><span>{course.venueText}</span></div>
         {!compact && course.description ? <p className="course-description">{course.description}</p> : null}

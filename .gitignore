@@ -19,6 +19,7 @@ miniprogram/project.private.config.json
 miniprogram/.workbuddy/
 miniprogram/dist/
 apps/web/dist/
+apps/web/.vite/
 
 # ===== 早期开发 / 测试脚本（非业务代码）=====
 server/smoke_mp.js

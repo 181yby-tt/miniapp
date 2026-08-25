@@ -13,9 +13,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const pathlib = require('path');
 const { URL } = require('url');
-const { db, nextId, initStore, save } = require('./store');
+const { db, nextId, initStore, save, refreshEnrollmentState, persistEnrollmentMutation } = require('./store');
 const { hashPassword, verifyPassword, sign, verify } = require('./auth');
 const { code2Session } = require('./config');
+const { initRedis, rateLimit, getJson, setJson, invalidate, withStudentLock } = require('./redis');
 
 const PORT = process.env.PORT || 3000;
 const STUDENT_PASSWORD_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
@@ -24,7 +25,7 @@ const WEB_DIST_DIR = pathlib.resolve(process.env.WEB_DIST_DIR || pathlib.join(__
 const WEB_INDEX_FILE = pathlib.join(WEB_DIST_DIR, 'index.html');
 
 // 异步初始化存储（MySQL 或文件模式），就绪后再监听端口
-const storeReady = initStore();
+const storeReady = Promise.all([initStore(), initRedis()]);
 
 /* ----------------------------- 工具 ----------------------------- */
 
@@ -36,6 +37,23 @@ function send(res, status, body) {
 
 function ok(res, data) { send(res, 200, { code: 'OK', data }); }
 function fail(res, code, message, status = 400, details = {}) { send(res, status, { code, message, request_id: `req_${Date.now()}`, details }); }
+
+function requestIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket.remoteAddress || '';
+}
+
+async function enforceRateLimit(res, key, limit, seconds) {
+  try {
+    const result = await rateLimit(key, limit, seconds);
+    if (result.allowed) return true;
+    fail(res, 'RATE_LIMITED', `操作太频繁，请 ${result.retryAfter} 秒后再试`, 429, { retry_after: result.retryAfter });
+    return false;
+  } catch (error) {
+    console.error('[限流] 检查失败，允许请求继续:', error.message);
+    return true;
+  }
+}
 
 function sendAdminConsole(res) {
   fs.readFile(ADMIN_CONSOLE_FILE, (err, html) => {
@@ -297,91 +315,90 @@ function studentConflicts(courseId, timeSlotIds) {
 /* ----------------------------- 报名 / 退课 ----------------------------- */
 
 async function doEnroll(req, res, body, courseId, source, actorUser) {
+  const student = source === 'STUDENT' ? getStudentByUser(actorUser.id) : getStudent(body.student_id);
+  if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生不存在', 404);
   const release = await lock(`course:${courseId}`);
   try {
-    const course = getCourse(courseId);
-    if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
-    if (source === 'STUDENT' && course.status !== 'OPEN') return fail(res, 'COURSE_NOT_OPEN', '课程未开放报名');
-    if (source === 'STAFF' && ['FINISHED', 'ARCHIVED'].includes(course.status)) return fail(res, 'COURSE_NOT_OPEN', '课程已结束或归档，无法代报名');
+    return await withStudentLock(student.id, async () => {
+      await refreshEnrollmentState(student.id, courseId);
+      const course = getCourse(courseId);
+      if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
+      if (source === 'STUDENT' && course.status !== 'OPEN') return fail(res, 'COURSE_NOT_OPEN', '课程未开放报名');
+      if (source === 'STAFF' && ['FINISHED', 'ARCHIVED'].includes(course.status)) return fail(res, 'COURSE_NOT_OPEN', '课程已结束或归档，无法代报名');
 
-    const student = source === 'STUDENT' ? getStudentByUser(actorUser.id) : getStudent(body.student_id);
-    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生不存在', 404);
+      const idemKey = body.idempotency_key || `auto-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const idemRec = db.enrollments.find((item) => item.student_id === student.id && item.idempotency_key === idemKey && item.status === 'ENROLLED');
+      if (idemRec) return ok(res, { enrollment: idemRec, course: courseToView(course, student), idempotent: true });
+      const existing = db.enrollments.find((item) => item.student_id === student.id && item.course_id === course.id);
+      if (existing && existing.status === 'ENROLLED') return fail(res, 'ALREADY_ENROLLED', '你已报名该课程');
+      if (source === 'STUDENT' && !studentMatchesScope(student, course.allowed_scope_json)) return fail(res, 'STUDENT_SCOPE_MISMATCH', '该课程不在你的可报名范围内');
 
-    const idemKey = body.idempotency_key || `auto-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const maxActive = parseInt(getConfig('student.max_active_courses', '2'), 10);
+      if (studentEnrollments(student.id, 'ENROLLED').length >= maxActive) return fail(res, 'STUDENT_LIMIT_REACHED', `每名学生最多报名 ${maxActive} 门课程`);
+      const maxPerCat = parseInt(getConfig('student.max_courses_per_category', '0'), 10);
+      if (maxPerCat > 0) {
+        const categoryCount = studentEnrollments(student.id, 'ENROLLED').filter((item) => getCourse(item.course_id)?.category_id === course.category_id).length;
+        if (categoryCount >= maxPerCat) return fail(res, 'STUDENT_LIMIT_REACHED', `该分类最多报名 ${maxPerCat} 门课程`);
+      }
 
-    // 幂等：同 (student, key) 已报名成功则直接返回
-    const idemRec = db.enrollments.find((e) => e.student_id === student.id && e.idempotency_key === idemKey && e.status === 'ENROLLED');
-    if (idemRec) return ok(res, { enrollment: idemRec, course: courseToView(course, student), idempotent: true });
+      const busy = studentBusySlots(student.id);
+      const conflictSlot = courseSchedules(course.id).find((slot) => slot.weekday && slot.period && busy.has(`${slot.weekday}-${slot.period}`));
+      if (conflictSlot) {
+        const clash = db.enrollments.find((item) => item.student_id === student.id && item.status === 'ENROLLED' && courseSchedules(item.course_id).some((slot) => slot.weekday === conflictSlot.weekday && slot.period === conflictSlot.period));
+        return fail(res, 'STUDENT_TIME_CONFLICT', `与“${clash ? getCourse(clash.course_id).name : '其他课程'}”上课时间冲突`);
+      }
+      if (course.active_count >= course.capacity) return fail(res, 'COURSE_FULL', '课程名额已满');
 
-    // 已报名（不同 key）
-    const existing = db.enrollments.find((e) => e.student_id === student.id && e.course_id === course.id);
-    if (existing && existing.status === 'ENROLLED') return fail(res, 'ALREADY_ENROLLED', '你已报名该课程');
-
-    // 范围
-    if (source === 'STUDENT' && !studentMatchesScope(student, course.allowed_scope_json)) return fail(res, 'STUDENT_SCOPE_MISMATCH', '该课程不在你的可报名范围内');
-
-    // 数量上限
-    const maxActive = parseInt(getConfig('student.max_active_courses', '2'), 10);
-    const activeCount = studentEnrollments(student.id, 'ENROLLED').length;
-    if (activeCount >= maxActive) return fail(res, 'STUDENT_LIMIT_REACHED', `每名学生最多报名 ${maxActive} 门课程`);
-
-    const maxPerCat = parseInt(getConfig('student.max_courses_per_category', '0'), 10);
-    if (maxPerCat > 0) {
-      const catCount = studentEnrollments(student.id, 'ENROLLED').filter((e) => getCourse(e.course_id).category_id === course.category_id).length;
-      if (catCount >= maxPerCat) return fail(res, 'STUDENT_LIMIT_REACHED', `该分类最多报名 ${maxPerCat} 门课程`);
-    }
-
-    // 时间冲突
-    const busy = studentBusySlots(student.id);
-    const conflictSlot = courseSchedules(course.id).find((sc) => sc.weekday && sc.period && busy.has(`${sc.weekday}-${sc.period}`));
-    if (conflictSlot) {
-      const clash = db.enrollments.find((e) => e.student_id === student.id && e.status === 'ENROLLED' && courseSchedules(e.course_id).some((s) => s.weekday === conflictSlot.weekday && s.period === conflictSlot.period));
-      const clashName = clash ? getCourse(clash.course_id).name : '其他课程';
-      return fail(res, 'STUDENT_TIME_CONFLICT', `与“${clashName}”上课时间冲突`);
-    }
-
-    // 条件更新（名额）
-    if (course.active_count >= course.capacity) return fail(res, 'COURSE_FULL', '课程名额已满');
-    course.active_count += 1;
-    course.version += 1;
-
-    // 写入/复用报名记录
-    let rec;
-    if (existing && existing.status === 'CANCELLED') {
-      existing.status = 'ENROLLED'; existing.enrolled_at = new Date().toISOString(); existing.cancelled_at = null;
-      existing.idempotency_key = idemKey; existing.source = source; existing.operated_by = actorUser ? actorUser.id : null; existing.reason = body.reason || null;
-      rec = existing;
-    } else {
-      rec = { id: nextId('enrollments'), student_id: student.id, course_id: course.id, status: 'ENROLLED', source, idempotency_key: idemKey, enrolled_at: new Date().toISOString(), cancelled_at: null, operated_by: actorUser ? actorUser.id : null, reason: body.reason || null };
-      db.enrollments.push(rec);
-    }
-    save();
-    audit(actorUser ? actorUser.id : student.user_id, source === 'STUDENT' ? 'ENROLL' : 'STAFF_ENROLL', 'course', course.id, null, { student_id: student.id }, req.ip);
-    return ok(res, { enrollment: rec, course: courseToView(course, student) });
+      const now = new Date().toISOString();
+      const rec = existing ? { ...existing } : { id: nextId('enrollments'), student_id: student.id, course_id: course.id };
+      Object.assign(rec, { status: 'ENROLLED', source, idempotency_key: idemKey, enrolled_at: now, cancelled_at: null, operated_by: actorUser ? actorUser.id : null, reason: body.reason || null });
+      const auditLog = { id: nextId('audit_logs'), actor_id: actorUser ? actorUser.id : student.user_id, action: source === 'STUDENT' ? 'ENROLL' : 'STAFF_ENROLL', target_type: 'course', target_id: course.id, before_json: null, after_json: JSON.stringify({ student_id: student.id }), ip: requestIp(req), created_at: now };
+      const persisted = await persistEnrollmentMutation({ mode: 'enroll', courseId: course.id, enrollment: rec, auditLog });
+      if (existing) Object.assign(existing, rec); else db.enrollments.push(rec);
+      course.active_count = persisted.handled ? persisted.activeCount : course.active_count + 1;
+      course.version = persisted.handled ? persisted.version : course.version + 1;
+      db.audit_logs.push(auditLog);
+      if (!persisted.handled) await save();
+      await invalidate('open-courses');
+      return ok(res, { enrollment: rec, course: courseToView(course, student) });
+    });
+  } catch (error) {
+    if (error.code === 'BUSY_RETRY') return fail(res, error.code, error.message, 429);
+    if (error.code === 'COURSE_FULL') return fail(res, error.code, error.message, 409);
+    console.error('[报名] 写入失败:', error.message);
+    return fail(res, 'ENROLL_FAILED', '报名没有完成，请重试', 500);
   } finally {
     release();
   }
 }
 
 async function doWithdraw(req, res, courseId, source, actorUser, body) {
+  const student = source === 'STUDENT' ? getStudentByUser(actorUser.id) : getStudent(body.student_id);
+  if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生不存在', 404);
   const release = await lock(`course:${courseId}`);
   try {
-    const course = getCourse(courseId);
-    if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
-    const student = source === 'STUDENT' ? getStudentByUser(actorUser.id) : getStudent(body.student_id);
-    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生不存在', 404);
-    const rec = db.enrollments.find((e) => e.student_id === student.id && e.course_id === course.id);
-    if (!rec || rec.status !== 'ENROLLED') {
-      // 幂等：已是退课状态直接返回
-      return ok(res, { status: rec ? rec.status : 'NONE', released: 0 });
-    }
-    rec.status = 'CANCELLED'; rec.cancelled_at = new Date().toISOString();
-    rec.operated_by = actorUser ? actorUser.id : null; rec.reason = body && body.reason ? body.reason : (source === 'STUDENT' ? '学生主动退课' : '管理员代退课');
-    if (course.active_count > 0) course.active_count = course.active_count - 1;
-    course.version += 1;
-    save();
-    audit(actorUser ? actorUser.id : student.user_id, source === 'STUDENT' ? 'WITHDRAW' : 'STAFF_WITHDRAW', 'course', course.id, null, { student_id: student.id }, req.ip);
-    return ok(res, { status: 'CANCELLED', released: 1 });
+    return await withStudentLock(student.id, async () => {
+      await refreshEnrollmentState(student.id, courseId);
+      const course = getCourse(courseId);
+      if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
+      const existing = db.enrollments.find((item) => item.student_id === student.id && item.course_id === course.id);
+      if (!existing || existing.status !== 'ENROLLED') return ok(res, { status: existing ? existing.status : 'NONE', released: 0 });
+      const now = new Date().toISOString();
+      const rec = { ...existing, status: 'CANCELLED', cancelled_at: now, operated_by: actorUser ? actorUser.id : null, reason: body?.reason || (source === 'STUDENT' ? '学生主动退课' : '管理员代退课') };
+      const auditLog = { id: nextId('audit_logs'), actor_id: actorUser ? actorUser.id : student.user_id, action: source === 'STUDENT' ? 'WITHDRAW' : 'STAFF_WITHDRAW', target_type: 'course', target_id: course.id, before_json: null, after_json: JSON.stringify({ student_id: student.id }), ip: requestIp(req), created_at: now };
+      const persisted = await persistEnrollmentMutation({ mode: 'withdraw', courseId: course.id, enrollment: rec, auditLog });
+      Object.assign(existing, rec);
+      course.active_count = persisted.handled ? persisted.activeCount : Math.max(0, course.active_count - 1);
+      course.version = persisted.handled ? persisted.version : course.version + 1;
+      db.audit_logs.push(auditLog);
+      if (!persisted.handled) await save();
+      await invalidate('open-courses');
+      return ok(res, { status: 'CANCELLED', released: 1 });
+    });
+  } catch (error) {
+    if (error.code === 'BUSY_RETRY') return fail(res, error.code, error.message, 429);
+    console.error('[退课] 写入失败:', error.message);
+    return fail(res, 'WITHDRAW_FAILED', '退课没有完成，请重试', 500);
   } finally {
     release();
   }
@@ -395,9 +412,18 @@ const server = http.createServer(async (req, res) => {
   const path = url.pathname;
   const method = req.method;
   const user = getAuth(req);
-  const ip = req.socket.remoteAddress || '';
+  const ip = requestIp(req);
+  if (path.startsWith('/api/') && path !== '/api/health') {
+    const globalLimit = parseInt(process.env.RATE_LIMIT_GLOBAL_PER_SECOND || '2500', 10);
+    if (!await enforceRateLimit(res, 'global', globalLimit, 1)) return;
+  }
+  if (/\/enroll$/.test(path) && user && !await enforceRateLimit(res, `enroll:${user.id}`, parseInt(process.env.RATE_LIMIT_ENROLL_PER_10_SECONDS || '10', 10), 10)) return;
   let body = {};
   if (method === 'POST' || method === 'PUT' || method === 'DELETE') body = await readBody(req);
+  if (path === '/api/auth/login') {
+    const loginIdentity = String(body.username || 'unknown').trim().toLowerCase();
+    if (!await enforceRateLimit(res, `login:${ip}:${loginIdentity}`, parseInt(process.env.RATE_LIMIT_LOGIN_PER_ACCOUNT_PER_MINUTE || '10', 10), 60)) return;
+  }
 
   const requireUser = () => { if (!user) { fail(res, 'UNAUTHORIZED', '请先登录', 401); return false; } return true; };
   const requireStaff = () => { if (!user || !['STAFF', 'SUPER_ADMIN'].includes(user.user_type)) { fail(res, 'FORBIDDEN', '无权访问', 403); return false; } return true; };
@@ -489,13 +515,20 @@ const server = http.createServer(async (req, res) => {
   // 学生端
   if (path === '/api/courses' && method === 'GET') {
     const student = getStudentByUser(user.id);
+    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生资料不存在', 404);
     const q = url.searchParams.get('q') || '';
     const category = url.searchParams.get('category') || '';
-    const onlyOpen = url.searchParams.get('open') === '1';
-    let list = db.courses.filter((c) => c.status === 'OPEN' && studentMatchesScope(student, c.allowed_scope_json));
-    if (category) list = list.filter((c) => (db.course_categories.find((x) => x.id === c.category_id) || {}).name === category);
-    if (q) list = list.filter((c) => `${c.name}${courseTeachers(c.id).join('')}`.toLowerCase().includes(q.toLowerCase()));
-    return ok(res, { items: list.map((c) => courseToView(c, student)), categories: [...new Set(db.courses.map((c) => (db.course_categories.find((x) => x.id === c.category_id) || {}).name).filter(Boolean))] });
+    let cached = await getJson('open-courses');
+    if (!cached) {
+      const items = db.courses.filter((course) => course.status === 'OPEN').map((course) => courseToView(course));
+      cached = { items, categories: [...new Set(items.map((course) => course.category).filter(Boolean))] };
+      await setJson('open-courses', cached, 5);
+    }
+    const enrolledIds = new Set(studentEnrollments(student.id, 'ENROLLED').map((item) => item.course_id));
+    let list = cached.items.filter((course) => studentMatchesScope(student, course.allowed_scope));
+    if (category) list = list.filter((course) => course.category === category);
+    if (q) list = list.filter((course) => `${course.name}${course.teachers.join('')}`.toLowerCase().includes(q.toLowerCase()));
+    return ok(res, { items: list.map((course) => ({ ...course, enrolled: enrolledIds.has(course.id) })), categories: cached.categories });
   }
 
   if (/^\/api\/courses\/\d+$/.test(path) && method === 'GET') {
@@ -641,7 +674,7 @@ const server = http.createServer(async (req, res) => {
       record = { id: `custom-${weekday}-${period}-${Date.now().toString(36)}`, name, weekday, period, start_time: body.start_time || null, end_time: body.end_time || null, status: 'ACTIVE' };
       db.time_slots.push(record);
     }
-    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'CREATE_BASE_DATA', target_type: type, target_id: record.id, before_json: null, after_json: JSON.stringify({ name }), ip, created_at: new Date().toISOString() });
+    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'CREATE_BASE_DATA', target_type: type, target_id: typeof record.id === 'number' ? record.id : 0, before_json: null, after_json: JSON.stringify({ id: record.id, name }), ip, created_at: new Date().toISOString() });
     await save();
     return ok(res, { item: record });
   }
@@ -659,14 +692,14 @@ const server = http.createServer(async (req, res) => {
   if (path === '/api/admin/courses' && method === 'POST') {
     if (!requireStaff()) return;
     const r = await saveCourse(res, body, null, user, ip);
-    if (r) ok(res, r);
+    if (r) { await invalidate('open-courses'); ok(res, r); }
     return;
   }
 
   if (/^\/api\/admin\/courses\/\d+$/.test(path) && method === 'PUT') {
     if (!requireStaff()) return;
     const r = await saveCourse(res, body, Number(path.split('/')[4]), user, ip);
-    if (r) ok(res, r);
+    if (r) { await invalidate('open-courses'); ok(res, r); }
     return;
   }
 
@@ -693,6 +726,7 @@ const server = http.createServer(async (req, res) => {
     course.version += 1; course.updated_by = user.id; course.updated_at = new Date().toISOString();
     save();
     audit(user.id, `COURSE_${action.toUpperCase()}`, 'course', id, before, { status: course.status }, ip);
+    await invalidate('open-courses');
     return ok(res, { course: courseToView(course) });
   }
 
@@ -862,7 +896,16 @@ const server = http.createServer(async (req, res) => {
 
   if (path === '/api/admin/audit' && method === 'GET') {
     if (!requireStaff()) return;
-    return ok(res, { items: db.audit_logs.slice(-50).reverse() });
+    const items = db.audit_logs.slice(-100).reverse().map((item) => {
+      const actor = db.users.find((account) => account.id === item.actor_id);
+      const student = actor ? db.students.find((record) => record.user_id === actor.id) : null;
+      const staff = actor ? db.staff.find((record) => record.user_id === actor.id) : null;
+      let target_name = '';
+      if (item.target_type === 'course') target_name = getCourse(item.target_id)?.name || '';
+      if (item.target_type === 'student') target_name = getStudent(item.target_id)?.name || '';
+      return { ...item, actor_name: student?.name || staff?.name || actor?.username || '系统', target_name };
+    });
+    return ok(res, { items });
   }
 
   return fail(res, 'NOT_FOUND', '接口不存在', 404);
