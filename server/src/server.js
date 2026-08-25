@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 课序后端：零依赖 Node http 服务，实现选课排课核心逻辑。
+ * 选课排课后端：零依赖 Node http 服务，实现选课排课核心逻辑。
  * - 报名：进程内课程锁串行化 + 条件更新（镜像 MySQL 行级锁/条件更新语义），保证不超卖、不重复。
  * - 幂等：enrollments.idempotency_key (student_id, key) 唯一约束。
  * - 冲突：教师 / 场地 / 学生时间 / 班额 硬冲突校验。
@@ -9,6 +9,7 @@
  */
 
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const pathlib = require('path');
 const { URL } = require('url');
@@ -17,6 +18,7 @@ const { hashPassword, verifyPassword, sign, verify } = require('./auth');
 const { code2Session } = require('./config');
 
 const PORT = process.env.PORT || 3000;
+const STUDENT_PASSWORD_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
 const ADMIN_CONSOLE_FILE = pathlib.resolve(__dirname, '..', '..', 'admin-console.html');
 const WEB_DIST_DIR = pathlib.resolve(process.env.WEB_DIST_DIR || pathlib.join(__dirname, '..', '..', 'apps', 'web', 'dist'));
 const WEB_INDEX_FILE = pathlib.join(WEB_DIST_DIR, 'index.html');
@@ -132,6 +134,11 @@ function audit(actorId, action, targetType, targetId, before, after, ip) {
     ip: ip || '', created_at: new Date().toISOString(),
   });
   save();
+}
+
+function generatedStudentPassword(name, studentNo) {
+  const digest = crypto.createHmac('sha256', STUDENT_PASSWORD_SECRET).update(`${studentNo}|${name}`).digest('base64url');
+  return `Xk@${digest.slice(0, 9)}`;
 }
 
 /* ----------------------------- 查询助手 ----------------------------- */
@@ -468,6 +475,7 @@ const server = http.createServer(async (req, res) => {
 
   // 改密
   if (path === '/api/auth/change-password' && method === 'POST') {
+    if (!verifyPassword(body.old_password || '', user.password_hash)) return fail(res, 'INVALID_OLD_PASSWORD', '原密码不正确', 400);
     if (!body.new_password || body.new_password.length < parseInt(getConfig('security.password_min_length', '8'), 10)) return fail(res, 'WEAK_PASSWORD', `密码至少 ${getConfig('security.password_min_length', '8')} 位`);
     if (body.new_password !== body.confirm_password) return fail(res, 'PASSWORD_MISMATCH', '两次输入密码不一致');
     user.password_hash = hashPassword(body.new_password);
@@ -607,6 +615,37 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (/^\/api\/admin\/meta\/(staff|venues|categories|time-slots)$/.test(path) && method === 'POST') {
+    if (!requireStaff()) return;
+    const type = path.split('/')[4];
+    const name = String(body.name || '').trim();
+    if (!name) return fail(res, 'INVALID_PARAM', '名称不能为空');
+    let record;
+    if (type === 'staff') {
+      if (db.staff.some((item) => item.name === name)) return fail(res, 'DUPLICATE_NAME', '该教师已经存在');
+      record = { id: nextId('staff'), user_id: null, staff_no: String(body.staff_no || '').trim() || `T${Date.now().toString().slice(-6)}`, name, title: '', department: '', status: 'ACTIVE' };
+      db.staff.push(record);
+    } else if (type === 'venues') {
+      if (db.venues.some((item) => item.name === name)) return fail(res, 'DUPLICATE_NAME', '该场地已经存在');
+      record = { id: nextId('venues'), name, parent_id: null, capacity: Number(body.capacity) || 0, status: 'ACTIVE', remark: String(body.remark || '') };
+      db.venues.push(record);
+    } else if (type === 'categories') {
+      if (db.course_categories.some((item) => item.name === name)) return fail(res, 'DUPLICATE_NAME', '该课程分类已经存在');
+      record = { id: nextId('course_categories'), name, sort_order: db.course_categories.length + 1, status: 'ACTIVE' };
+      db.course_categories.push(record);
+    } else {
+      const weekday = Number(body.weekday);
+      const period = Number(body.period);
+      if (weekday < 1 || weekday > 7 || period < 1 || period > 20) return fail(res, 'INVALID_PARAM', '星期必须为 1 至 7，节次必须为 1 至 20');
+      if (db.time_slots.some((item) => Number(item.weekday) === weekday && Number(item.period) === period)) return fail(res, 'DUPLICATE_SLOT', '这个星期和节次已经存在');
+      record = { id: `custom-${weekday}-${period}-${Date.now().toString(36)}`, name, weekday, period, start_time: body.start_time || null, end_time: body.end_time || null, status: 'ACTIVE' };
+      db.time_slots.push(record);
+    }
+    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'CREATE_BASE_DATA', target_type: type, target_id: record.id, before_json: null, after_json: JSON.stringify({ name }), ip, created_at: new Date().toISOString() });
+    await save();
+    return ok(res, { item: record });
+  }
+
   if (path === '/api/admin/courses' && method === 'GET') {
     if (!requireStaff()) return;
     const q = url.searchParams.get('q') || '';
@@ -614,7 +653,7 @@ const server = http.createServer(async (req, res) => {
     let list = db.courses.slice();
     if (status) list = list.filter((c) => c.status === status);
     if (q) list = list.filter((c) => `${c.name}${courseTeachers(c.id).join('')}`.toLowerCase().includes(q.toLowerCase()));
-    return ok(res, { items: list.map((c) => { const v = courseToView(c); v.teachers = courseTeachers(c.id); v.teacher_ids = db.course_staff.filter((cs) => cs.course_id === c.id).map((cs) => cs.staff_id); v.schedules = courseSchedules(c.id); return v; }) });
+    return ok(res, { items: list.map((c) => { const v = courseToView(c); v.category_id = c.category_id; v.teachers = courseTeachers(c.id); v.teacher_ids = db.course_staff.filter((cs) => cs.course_id === c.id).map((cs) => cs.staff_id); v.schedules = courseSchedules(c.id); return v; }) });
   }
 
   if (path === '/api/admin/courses' && method === 'POST') {
@@ -642,6 +681,13 @@ const server = http.createServer(async (req, res) => {
     const action = path.split('/')[5];
     const course = getCourse(id);
     if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
+    if (action === 'open') {
+      const teachers = db.course_staff.filter((item) => item.course_id === id);
+      const schedules = db.course_schedules.filter((item) => item.course_id === id);
+      if (!teachers.length || !schedules.length) {
+        return fail(res, 'COURSE_NOT_READY', '开放报名之前，请先安排任课教师、上课时间和场地', 400);
+      }
+    }
     const before = { status: course.status };
     course.status = { open: 'OPEN', close: 'CLOSED', archive: 'ARCHIVED' }[action];
     course.version += 1; course.updated_by = user.id; course.updated_at = new Date().toISOString();
@@ -694,10 +740,6 @@ const server = http.createServer(async (req, res) => {
     if (rawRows.length > 3000) return fail(res, 'IMPORT_TOO_LARGE', '单次最多导入 3000 名学生');
 
     const passwordMinLength = parseInt(getConfig('security.password_min_length', '8'), 10);
-    const defaultPassword = String(body.default_password || '');
-    if (defaultPassword.length < passwordMinLength || defaultPassword.length > 128) {
-      return fail(res, 'WEAK_PASSWORD', `统一初始密码必须为 ${passwordMinLength} 至 128 位`);
-    }
 
     const errors = [];
     const seen = new Set();
@@ -715,7 +757,7 @@ const server = http.createServer(async (req, res) => {
       else if (item.student_no.length > 32) errors.push({ row_number: rowNumber, message: '学号不能超过 32 个字符' });
       else if (seen.has(item.student_no)) errors.push({ row_number: rowNumber, message: '文件内学号重复' });
       else seen.add(item.student_no);
-      if (!item.name) item.name = item.student_no;
+      if (!item.name) errors.push({ row_number: rowNumber, message: '姓名为空' });
       if (item.name.length > 64) errors.push({ row_number: rowNumber, message: '姓名不能超过 64 个字符' });
       if (item.grade.length > 32 || item.class_name.length > 32) errors.push({ row_number: rowNumber, message: '年级或班级不能超过 32 个字符' });
       if (item.password && (item.password.length < passwordMinLength || item.password.length > 128)) errors.push({ row_number: rowNumber, message: `初始密码必须为 ${passwordMinLength} 至 128 位` });
@@ -734,6 +776,7 @@ const server = http.createServer(async (req, res) => {
     };
     let created = 0;
     let updated = 0;
+    const credentials = [];
     for (const item of rows) {
       let grade = db.grades.find((record) => record.name === item.grade);
       if (!grade) {
@@ -751,28 +794,34 @@ const server = http.createServer(async (req, res) => {
         student.name = item.name; student.grade_id = grade.id; student.class_id = cls.id; student.status = 'ACTIVE';
         let account = db.users.find((record) => record.id === student.user_id);
         if (!account) {
-          account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(item.password || defaultPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
+          const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
+          account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
           db.users.push(account); student.user_id = account.id;
+          credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
         } else {
           account.status = 'ACTIVE'; account.updated_at = now;
           if (item.password || body.reset_existing_password) {
-            account.password_hash = passwordHash(item.password || defaultPassword);
+            const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
+            account.password_hash = passwordHash(initialPassword);
             account.must_change_password = true;
             account.failed_login_count = 0; account.locked_until = null;
+            credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
           }
         }
         updated += 1;
       } else {
-        const account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(item.password || defaultPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
+        const initialPassword = item.password || generatedStudentPassword(item.name, item.student_no);
+        const account = { id: nextId('users'), username: item.student_no, password_hash: passwordHash(initialPassword), user_type: 'STUDENT', status: 'ACTIVE', must_change_password: true, failed_login_count: 0, locked_until: null, created_at: now, updated_at: now };
         db.users.push(account);
         student = { id: nextId('students'), user_id: account.id, student_no: item.student_no, name: item.name, grade_id: grade.id, class_id: cls.id, status: 'ACTIVE' };
         db.students.push(student);
+        credentials.push({ name: item.name, student_no: item.student_no, username: item.student_no, password: initialPassword });
         created += 1;
       }
     }
     db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'IMPORT_STUDENTS', target_type: 'students', target_id: 0, before_json: null, after_json: JSON.stringify({ created, updated, total: rows.length }), ip, created_at: now });
     await save();
-    return ok(res, { created, updated, total: rows.length });
+    return ok(res, { created, updated, total: rows.length, credentials });
   }
 
   if (path === '/api/admin/enrollments' && method === 'GET') {
@@ -824,12 +873,34 @@ const server = http.createServer(async (req, res) => {
 async function saveCourse(res, body, id, user, ip) {
   const name = (body.name || '').trim();
   if (!name) return fail(res, 'INVALID_PARAM', '课程名称必填', 400);
+  if (db.courses.some((course) => course.id !== Number(id) && course.name === name && course.status !== 'ARCHIVED')) {
+    return fail(res, 'DUPLICATE_COURSE', '已经存在同名课程，请直接编辑原课程', 409);
+  }
   const capacity = parseInt(body.capacity, 10);
   if (!capacity || capacity < 1) return fail(res, 'INVALID_PARAM', '课程容量必须为正整数', 400);
-  const categoryId = Number(body.category_id) || (db.course_categories[0] && db.course_categories[0].id);
+  const categoryId = Number(body.category_id);
+  if (!db.course_categories.some((category) => category.id === categoryId)) return fail(res, 'INVALID_CATEGORY', '请选择有效的课程分类', 400);
   const teachers = Array.isArray(body.teachers) ? body.teachers.map(Number).filter(Boolean) : (body.teacher_id ? [Number(body.teacher_id)] : []);
-  const schedules = Array.isArray(body.schedules) ? body.schedules.filter((s) => s.time_slot_id && s.venue_id) : [];
+  if (teachers.some((staffId) => !db.staff.some((staff) => staff.id === staffId))) return fail(res, 'INVALID_TEACHER', '任课教师资料不存在，请刷新页面后重试', 400);
+  const rawSchedules = Array.isArray(body.schedules) ? body.schedules : [];
+  if (rawSchedules.some((schedule) => !schedule.time_slot_id || !schedule.venue_id)) return fail(res, 'INVALID_SCHEDULE', '每条排课都必须选择时间段和场地', 400);
+  const schedules = rawSchedules.map((schedule) => ({ time_slot_id: String(schedule.time_slot_id), venue_id: Number(schedule.venue_id) }));
+  if (schedules.some((schedule) => !db.time_slots.some((slot) => slot.id === schedule.time_slot_id))) return fail(res, 'INVALID_TIME_SLOT', '排课时间段不存在，请刷新页面后重试', 400);
+  if (schedules.some((schedule) => !db.venues.some((venue) => venue.id === schedule.venue_id))) return fail(res, 'INVALID_VENUE', '排课场地不存在，请刷新页面后重试', 400);
+  const scheduleKeys = schedules.map((schedule) => `${schedule.time_slot_id}|${schedule.venue_id}`);
+  if (new Set(scheduleKeys).size !== scheduleKeys.length) return fail(res, 'DUPLICATE_SCHEDULE', '同一时间和场地不能重复添加', 400);
   const status = body.status || 'DRAFT';
+  if (!['DRAFT', 'OPEN', 'CLOSED', 'FINISHED', 'ARCHIVED'].includes(status)) return fail(res, 'INVALID_STATUS', '课程状态无效', 400);
+  if (status === 'OPEN' && (!teachers.length || !schedules.length)) return fail(res, 'COURSE_NOT_READY', '开放报名的课程必须安排教师、上课时间和场地', 400);
+
+  const allowedScope = body.allowed_scope || { type: 'all' };
+  if (!['all', 'grades', 'classes'].includes(allowedScope.type)) return fail(res, 'INVALID_SCOPE', '可报名范围无效', 400);
+  if (allowedScope.type === 'grades' && (!(allowedScope.grades instanceof Array) || !allowedScope.grades.length || allowedScope.grades.some((gradeId) => !db.grades.some((grade) => grade.id === Number(gradeId))))) {
+    return fail(res, 'INVALID_SCOPE', '请选择至少一个有效年级', 400);
+  }
+  if (allowedScope.type === 'classes' && (!(allowedScope.classes instanceof Array) || !allowedScope.classes.length || allowedScope.classes.some((classId) => !db.classes.some((schoolClass) => schoolClass.id === Number(classId))))) {
+    return fail(res, 'INVALID_SCOPE', '请选择至少一个有效班级', 400);
+  }
 
   const existing = id ? getCourse(id) : null;
   // 容量不可低于当前有效报名
@@ -852,7 +923,7 @@ async function saveCourse(res, body, id, user, ip) {
     const before = { name: existing.name, capacity: existing.capacity, status: existing.status };
     existing.name = name; existing.category_id = categoryId; existing.capacity = capacity;
     existing.description = body.description || ''; existing.status = status;
-    existing.allowed_scope_json = body.allowed_scope ? JSON.stringify(body.allowed_scope) : existing.allowed_scope_json;
+    existing.allowed_scope_json = JSON.stringify(allowedScope);
     existing.version += 1; existing.updated_by = user.id; existing.updated_at = new Date().toISOString();
     // 重建老师与排课
     db.course_staff = db.course_staff.filter((x) => x.course_id !== existing.id);
@@ -864,7 +935,7 @@ async function saveCourse(res, body, id, user, ip) {
     return { course: courseToView(existing) };
   }
   const cid = nextId('courses');
-  db.courses.push({ id: cid, name, category_id: categoryId, description: body.description || '', cover_url: '', capacity, active_count: 0, status, enroll_start_at: null, enroll_end_at: null, course_start_date: null, course_end_date: null, allowed_scope_json: body.allowed_scope ? JSON.stringify(body.allowed_scope) : JSON.stringify({ type: 'all' }), version: 1, created_by: user.id, updated_by: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  db.courses.push({ id: cid, name, category_id: categoryId, description: body.description || '', cover_url: '', capacity, active_count: 0, status, enroll_start_at: null, enroll_end_at: null, course_start_date: null, course_end_date: null, allowed_scope_json: JSON.stringify(allowedScope), version: 1, created_by: user.id, updated_by: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   teachers.forEach((tid) => db.course_staff.push({ course_id: cid, staff_id: tid, role: 'TEACHER' }));
   schedules.forEach((s) => db.course_schedules.push({ id: nextId('course_schedules'), course_id: cid, time_slot_id: s.time_slot_id, venue_id: s.venue_id }));
   save();
@@ -887,10 +958,10 @@ function previewConflicts(id, body) {
 // 存储就绪后再监听端口，确保请求到达时内存数据已加载
 storeReady.then(() => {
   server.listen(PORT, () => {
-    console.log(`[课序] 后端已启动: http://localhost:${PORT}`);
-    console.log(`[课序] 演示账号 -> 学生 20260108/123456, 管理员 admin/demo123456`);
+    console.log(`[选课排课] 后端已启动: http://localhost:${PORT}`);
+    if (process.env.NODE_ENV !== 'production') console.log('[选课排课] 本地演示账号已加载，生产环境不会输出账号密码。');
   });
 }).catch((err) => {
-  console.error('[课序] 存储初始化失败，服务无法启动:', err);
+  console.error('[选课排课] 存储初始化失败，服务无法启动:', err);
   process.exit(1);
 });

@@ -24,8 +24,8 @@ export function LoginPage({ api, sessionStore, onSession }) {
     <main className="login-page">
       <section className="brand-panel" aria-label="平台介绍">
         <div className="brand-mark">课</div>
-        <div><p className="eyebrow">铁英中学 · 校本选课平台</p><h1>把兴趣，排进这一学期。</h1><p className="brand-copy">浏览课程、确认余位、完成报名，再从一张清晰的课表开始你的校本学习。</p></div>
-        <div className="brand-meta"><span>实时余位</span><span>冲突校验</span><span>多端同步</span></div>
+        <div><p className="eyebrow">铁英中学</p><h1>选课排课</h1><p className="brand-copy">学生在这里查看课程、报名和课表；教务人员在同一系统中维护学生、课程与排课。</p></div>
+        <div className="brand-meta"><span>学生选课</span><span>课程排课</span><span>教务管理</span></div>
       </section>
       <section className="login-panel">
         <form className="login-card" onSubmit={submit}>
