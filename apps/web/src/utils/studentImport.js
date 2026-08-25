@@ -3,7 +3,6 @@ const HEADER_ALIASES = {
   name: ['姓名', '学生姓名', 'name'],
   grade: ['年级', 'grade'],
   class_name: ['班级', '行政班', 'classname', 'class'],
-  password: ['初始密码', '登录密码', 'password'],
 };
 
 function text(value) {
@@ -46,14 +45,12 @@ export function parseStudentSheet(sheetRows) {
       name: text(row[indexes.name]),
       grade: indexes.grade === undefined ? '未分组' : text(row[indexes.grade]) || '未分组',
       class_name: indexes.class_name === undefined ? '未分组' : text(row[indexes.class_name]) || '未分组',
-      password: indexes.password === undefined ? '' : text(row[indexes.password]),
     };
 
     if (!studentNo) errors.push({ row_number: rowNumber, message: '学号为空' });
     else if (!item.name) errors.push({ row_number: rowNumber, message: '姓名为空' });
     else if (studentNo.length > 32) errors.push({ row_number: rowNumber, message: '学号不能超过 32 个字符' });
     else if (seen.has(studentNo)) errors.push({ row_number: rowNumber, message: `学号 ${studentNo} 在文件中重复` });
-    else if (item.password && item.password.length < 8) errors.push({ row_number: rowNumber, message: '初始密码至少 8 位' });
     else {
       seen.add(studentNo);
       parsed.push(item);

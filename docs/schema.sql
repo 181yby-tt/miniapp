@@ -197,14 +197,14 @@ CREATE TABLE IF NOT EXISTS `app_snapshots` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 初始化系统配置（仅作兜底；应用空库时会用内置种子覆盖）
-INSERT INTO `system_configs` (`config_key`,`config_value`,`value_type`) VALUES
+INSERT IGNORE INTO `system_configs` (`config_key`,`config_value`,`value_type`) VALUES
   ('security.password_min_length','8','int'),
+  ('security.student_initial_password','12345678','string'),
   ('student.max_active_courses','2','int'),
   ('student.max_courses_per_category','0','int'),
   ('enrollment.allow_withdraw_after_start','false','bool'),
   ('enrollment.allow_reenroll','true','bool'),
   ('security.login_max_failures','5','int'),
-  ('security.lock_minutes','15','int')
-ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`);
+  ('security.lock_minutes','15','int');
 
 SET FOREIGN_KEY_CHECKS = 1;
