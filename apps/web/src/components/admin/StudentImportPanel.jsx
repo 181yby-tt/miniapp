@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseStudentSheet } from '../../utils/studentImport.js';
 import { buildStudentCredentialSheet, STUDENT_CREDENTIAL_COLUMNS } from '../../utils/studentCredentialExport.js';
+import { localDateStamp } from '../../utils/enrollmentSummaryExport.js';
 
 async function downloadCredentials(credentials) {
   const { default: writeExcelFile } = await import('write-excel-file/browser');
@@ -8,7 +9,7 @@ async function downloadCredentials(credentials) {
     columns: STUDENT_CREDENTIAL_COLUMNS,
     sheet: '学生账号',
     stickyRowsCount: 1,
-  }).toFile(`学生初始账号_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }).toFile(`学生初始账号_${localDateStamp()}.xlsx`);
 }
 
 export default function StudentImportPanel({ api, toast, onImported }) {
