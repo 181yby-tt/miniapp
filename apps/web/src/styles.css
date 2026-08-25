@@ -218,6 +218,47 @@ button, input, select, textarea { font: inherit; }
 .admin-course-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }.admin-course-card { border: 1px solid #dfdacf; padding: 20px; background: #fffdf8; }.admin-course-top { display: flex; justify-content: space-between; gap: 18px; }.admin-course-top h2 { margin: 10px 0 6px; font: 600 24px/1.2 "Songti SC",serif; }.admin-course-top p { margin: 0 0 18px; color: #7f8881; font-size: 11px; line-height: 1.5; }.admin-course-top > strong { font: 600 30px/1 "Songti SC",serif; white-space: nowrap; }.admin-course-top > strong small { color: #8a928c; font-size: 12px; }.card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }.card-actions button,.primary-compact { border: 1px solid #c9cec9; padding: 7px 10px; color: #4e5e56; background: transparent; font-size: 11px; cursor: pointer; }.card-actions button:disabled { opacity: .45; cursor: default; }.primary-compact { color: #fff; border-color: #183a32; background: #183a32; }
 .settings-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 18px; }.config-list { display: grid; gap: 14px; }.config-list label { display: grid; grid-template-columns: 1fr 130px; gap: 14px; align-items: center; }.config-list label span { display: grid; gap: 4px; }.config-list small { color: #969c97; }.config-list input,.config-list select { width: 100%; border: 1px solid #d4d5ce; padding: 9px; background: #faf8f2; }.audit-list { max-height: 520px; overflow: auto; }.audit-list > div { display: flex; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid #e5e0d6; }.audit-list > div > span { display: grid; }.audit-list small,.audit-list time { color: #8c948e; font-size: 10px; }
 .rule-summary { margin: -10px 0 22px; border-left: 4px solid #b86138; padding: 15px 18px; display: grid; gap: 5px; color: #334a42; background: #f4eadc; }.rule-summary span { color: #6d776f; font-size: 12px; line-height: 1.7; }.rules-card { padding-bottom: 12px; }.rule-group { margin-top: 24px; }.rule-group + .rule-group { border-top: 1px solid #e0dbd0; padding-top: 20px; }.rule-group h3 { margin: 0 0 14px; color: #a3512f; font-size: 12px; letter-spacing: .08em; }.rule-control { grid-template-columns: 1fr auto !important; align-items: center; gap: 7px !important; }.rule-control > small { white-space: nowrap; }.readable-audit > div { padding: 14px 0; }.readable-audit strong { font-weight: 650; }.readable-audit strong b { color: #9c4f30; }.readable-audit time { white-space: nowrap; }
+.course-status-guide { margin-bottom: 20px; border-left: 4px solid #477b69; padding: 14px 17px; display: grid; gap: 5px; color: #334a42; background: #eaf2ec; }
+.course-status-guide span { color: #68766e; font-size: 11px; line-height: 1.7; }
+.course-status-guide b { color: #31574b; }
+.admin-course-card.is-history { background: #f0eee8; opacity: .9; }
+.admin-course-top p { margin-bottom: 8px; }
+.admin-course-top p:last-child { margin-bottom: 18px; }
+.card-actions { justify-content: flex-start; align-items: center; flex-wrap: wrap; }
+.card-actions button { padding: 8px 10px; }
+.card-actions button:hover { background: #eeece5; }
+.card-actions .course-open-action { border-color: #2e6552; color: #fff; background: #2e6552; }
+.card-actions .course-open-action:hover { background: #244f41; }
+.card-actions .course-pause-action { border-color: #c27a3e; color: #8b4b1f; background: #faead7; }
+.card-actions .course-history-action { margin-left: auto; border-color: transparent; color: #7f7468; }
+.history-note { margin-left: auto; color: #827b72; font-size: 10px; }
+.readonly-status { min-height: 42px; border: 1px solid #ddd7ca; padding: 9px 12px; display: grid; gap: 2px; color: #304a41; background: #eeeae1; }
+.readonly-status small { color: #879189; font-size: 10px; font-weight: 400; }
+.schedule-editor-list > div { grid-template-columns: 92px 1fr 1fr auto; align-items: center; border: 1px solid #dfd9cd; padding: 10px; background: #fffdf8; }
+.schedule-editor-list > div > b { color: #53665e; font-size: 11px; }
+.course-save-error { margin-top: 20px; border: 1px solid #dca897; padding: 13px 15px; background: #faebe5; }
+.course-save-error ul { margin: 8px 0 0; padding-left: 20px; line-height: 1.7; }
+.schedule-summary { margin-bottom: 18px; display: grid; grid-template-columns: repeat(3,1fr); border: 1px solid #dcd7cb; background: #fffdf8; }
+.schedule-summary > div { padding: 18px 20px; display: flex; gap: 9px; align-items: baseline; border-right: 1px solid #e4ded3; }
+.schedule-summary > div:last-child { border-right: 0; }
+.schedule-summary strong { font: 600 28px/1 "Songti SC",serif; }
+.schedule-summary span { color: #77827a; font-size: 11px; }
+.schedule-summary.has-conflict > div:last-child { color: #a54030; background: #fae8e3; }
+.unscheduled-courses { margin-bottom: 18px; border-left: 4px solid #d29443; padding: 14px 16px; background: #f7ecdc; }
+.unscheduled-courses > strong { font-size: 12px; }
+.unscheduled-courses > div { margin-top: 9px; display: flex; gap: 8px; flex-wrap: wrap; }
+.unscheduled-courses button { border: 1px solid #d7bd92; padding: 8px 10px; display: grid; gap: 2px; color: #624b2d; background: #fff9ee; text-align: left; cursor: pointer; }
+.unscheduled-courses button span { color: #927750; font-size: 9px; }
+.schedule-legend { margin-bottom: 10px; display: flex; gap: 16px; align-items: center; color: #66736b; font-size: 11px; }
+.schedule-legend span { display: flex; align-items: center; gap: 6px; }
+.schedule-legend i { width: 12px; height: 12px; border: 1px solid #cddbd1; background: #eef5ef; }
+.schedule-legend i.conflict { border-color: #dd796e; background: #fff0ef; }
+.schedule-legend small { margin-left: auto; color: #8b938d; }
+.admin-schedule-cell { position: relative; }
+.admin-schedule-cell.busy { padding-top: 28px; }
+.cell-conflict-label { position: absolute; inset: 5px 7px auto; color: #a33d2f; font-size: 10px; font-weight: 750; }
+.admin-schedule-cell button:hover { border-color: #6d9787; background: #e2f0e6; }
+.admin-schedule-cell button small { margin-top: 3px; color: #a05837; font-size: 10px; }
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 100; max-width: min(420px,calc(100vw - 40px)); padding: 13px 17px; color: #fff; background: #183a32; box-shadow: 0 16px 38px rgba(24,58,50,.25); font-size: 13px; }.toast.error { background: #9d442f; }
 .password-page { min-height: 100vh; display: grid; place-items: center; padding: 28px; background: #f5f1e7; }.password-card { width: min(100%,460px); border: 1px solid #ded7c8; padding: clamp(28px,5vw,52px); background: #fffdf8; }.brand-mark.dark { margin-bottom: 28px; color: #fff; border-color: #183a32; background: #183a32; }.password-card h1 { margin: 0; font: 600 38px/1.12 "Songti SC",serif; }.password-card > p:not(.eyebrow) { color: #7c857f; line-height: 1.7; }.password-card label { display: grid; gap: 7px; margin-top: 18px; font-size: 12px; font-weight: 750; }.password-card input { border: 1px solid #d6d3ca; padding: 12px; background: #faf8f2; }
 
@@ -256,6 +297,7 @@ button, input, select, textarea { font: inherit; }
   .responsive-table { border: 0; background: transparent; }.responsive-table .table-head { display: none; }.responsive-table .table-row,.enrollment-table .table-row { grid-template-columns: repeat(2,1fr); margin-bottom: 10px; border: 1px solid #dfd9cd; padding: 14px; background: #fffdf8; }.enrollment-table .table-row > span:first-child { grid-column: 1/-1; }
   .student-import-card { grid-template-columns: 1fr; padding: 18px; }.upload-button { width: fit-content; }.import-preview { grid-template-columns: 1fr; }.import-summary { display: grid; }.import-preview > * { grid-column: auto; }
   .workflow-steps,.resource-grid { grid-template-columns: repeat(2,1fr); }.workflow-steps > div:nth-child(2) { border-right: 0; }.course-import-panel { grid-template-columns: 1fr; }.course-import-preview { display: grid; }.credential-result { grid-template-columns: 1fr; }.credential-preview { grid-column: auto; }.credential-preview span { grid-template-columns: 1fr; }.course-editor { padding: 22px 18px; }.form-grid,.option-grid { grid-template-columns: 1fr; }.schedule-editor-list > div { grid-template-columns: 1fr; }.course-editor > footer { margin-inline: -18px; padding-inline: 18px; }.admin-schedule { grid-template-columns: 70px repeat(5,150px); }.slot-create { flex-wrap: wrap; }
+  .schedule-summary { grid-template-columns: 1fr; }.schedule-summary > div { border-right: 0; border-bottom: 1px solid #e4ded3; }.schedule-legend { align-items: flex-start; flex-wrap: wrap; }.schedule-legend small { width: 100%; margin-left: 0; }
   .config-list label { grid-template-columns: 1fr; }.toast { right: 20px; bottom: 88px; }
 }
 

@@ -16,7 +16,7 @@ const CONFIG_TEXT = {
 };
 const AUDIT_TEXT = {
   CHANGE_PASSWORD: '修改密码', IMPORT_STUDENTS: '导入学生名单', CREATE_COURSE: '新建课程', UPDATE_COURSE: '修改课程与排课',
-  COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '停止课程报名', COURSE_ARCHIVE: '归档课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
+  COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '暂停课程报名', COURSE_ARCHIVE: '移入历史课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
   ENROLL: '学生报名', WITHDRAW: '学生退课', STAFF_ENROLL: '教务代报名', STAFF_WITHDRAW: '教务代退课',
 };
 const AUDIT_TARGET_TEXT = { course: '课程', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', venues: '场地', categories: '课程分类', 'time-slots': '时间段' };
@@ -57,18 +57,24 @@ export function AdminCoursesPage({ api, toast }) {
   const items = useMemo(() => (state.data?.courses || []).filter((course) => (status === 'ALL' || course.status === status) && `${course.name}${course.teachers?.join('')}`.toLowerCase().includes(query.toLowerCase())), [state.data, query, status]);
   const refresh = () => { setEditorCourse(undefined); setRefreshKey((key) => key + 1); };
   async function changeStatus(course, action) {
-    const labels = { open: '开放报名', close: '停止报名', archive: '归档' };
-    if (!window.confirm(`确认将“${course.name}”设为${labels[action]}吗？`)) return;
-    try { await api.setCourseStatus(course.id, action); toast('课程状态已更新'); refresh(); }
+    const messages = {
+      open: `确认开放“${course.name}”的学生报名吗？\n\n开放后，符合范围的学生可以立即看到并报名这门课。`,
+      close: `确认暂停“${course.name}”的学生报名吗？\n\n学生将不能继续报名，已有报名和排课不会被删除，之后可以重新开放。`,
+      archive: `确认把“${course.name}”移入历史课程吗？\n\n它将不再参与当前排课和报名，但课程资料、学生报名记录都会保留。`,
+    };
+    if (!window.confirm(messages[action])) return;
+    const success = { open: '已开放学生报名', close: '已暂停学生报名', archive: '已移入历史课程' };
+    try { await api.setCourseStatus(course.id, action); toast(success[action]); refresh(); }
     catch (error) { toast(error.message, 'error'); }
   }
   if (state.loading) return <Loading />;
   if (state.error) return <ErrorState message={state.error} onRetry={refresh} />;
   return <>
     <PageHeader eyebrow="课程资料、教师与排课" title="课程管理" description="可以手动创建和编辑课程，也可以使用 Excel 批量导入。每门课程都能安排教师、上课时间、场地和报名范围。" action={<button className="primary-action" onClick={() => setEditorCourse(null)}>新建课程</button>} />
+    <section className="course-status-guide"><strong>课程从建立到结束</strong><span><b>尚未开放</b>：学生看不到；<b>开放报名</b>：学生可以选课；<b>暂停报名</b>：暂时停止新增报名；<b>历史课程</b>：不再参与当前排课，资料和报名记录仍保留。</span></section>
     <CourseImportPanel api={api} courses={state.data.courses} meta={state.data.meta} toast={toast} onImported={refresh} />
     <section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程或任课教师" /></div><div className="chip-row inline">{['ALL', 'OPEN', 'DRAFT', 'CLOSED', 'FINISHED', 'ARCHIVED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部课程' : <StatusPill status={item} />}</button>)}</div></section>
-    {items.length ? <div className="admin-course-grid">{items.map((course) => <article className="admin-course-card" key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>{course.teachers?.join('、') || '尚未安排教师'}</p><p>{course.schedules?.map((item) => `${item.slot_name} · ${item.venue_name}`).join('；') || '尚未排课'}</p></div><strong>{course.active_count}<small> / {course.capacity}</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions"><button onClick={() => setEditorCourse(course)}>编辑与排课</button>{course.status !== 'OPEN' ? <button onClick={() => changeStatus(course, 'open')}>开放报名</button> : <button onClick={() => changeStatus(course, 'close')}>停止报名</button>}<button disabled={course.status === 'ARCHIVED'} onClick={() => changeStatus(course, 'archive')}>归档</button></div></article>)}</div> : <Empty title="没有符合条件的课程" />}
+    {items.length ? <div className="admin-course-grid">{items.map((course) => <article className={`admin-course-card ${course.status === 'ARCHIVED' ? 'is-history' : ''}`} key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>任课教师：{course.teachers?.join('、') || '尚未安排'}</p><p>上课安排：{course.schedules?.map((item) => `${item.slot_name} · ${item.venue_name}`).join('；') || '尚未排课'}</p></div><strong>{course.active_count}<small> / {course.capacity} 人</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions"><button className="course-edit-action" onClick={() => setEditorCourse(course)}>{course.status === 'ARCHIVED' ? '查看或修改资料' : '修改资料与排课'}</button>{['DRAFT', 'CLOSED'].includes(course.status) ? <button className="course-open-action" onClick={() => changeStatus(course, 'open')}>开放学生报名</button> : null}{course.status === 'OPEN' ? <button className="course-pause-action" onClick={() => changeStatus(course, 'close')}>暂停学生报名</button> : null}{['DRAFT', 'CLOSED', 'FINISHED'].includes(course.status) ? <button className="course-history-action" onClick={() => changeStatus(course, 'archive')}>移入历史课程</button> : null}{course.status === 'ARCHIVED' ? <span className="history-note">已退出当前排课与报名</span> : null}</div></article>)}</div> : <Empty title="没有符合条件的课程" />}
     {editorCourse !== undefined ? <CourseEditor api={api} course={editorCourse} meta={state.data.meta} toast={toast} onClose={() => setEditorCourse(undefined)} onSaved={refresh} /> : null}
   </>;
 }
@@ -81,14 +87,37 @@ export function AdminSchedulePage({ api, toast }) {
   const dayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const weekdays = [...new Set(state.data.meta.time_slots.map((slot) => Number(slot.weekday)))].sort((a, b) => a - b);
   const periods = [...new Set(state.data.meta.time_slots.map((slot) => slot.period))].sort((a, b) => a - b);
-  const byCell = (weekday, period) => state.data.courses.filter((course) => course.schedules?.some((item) => Number(item.weekday) === weekday && Number(item.period) === period));
+  const byCell = (weekday, period) => state.data.courses.filter((course) => !['ARCHIVED', 'FINISHED'].includes(course.status) && course.schedules?.some((item) => Number(item.weekday) === weekday && Number(item.period) === period));
+  const venueFamily = (venueId) => {
+    const family = new Set(); const queue = [Number(venueId)];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || family.has(current)) continue;
+      family.add(current);
+      const venue = state.data.meta.venues.find((item) => item.id === current);
+      if (venue?.parent_id) queue.push(Number(venue.parent_id));
+      state.data.meta.venues.forEach((item) => { if (Number(item.parent_id) === current) queue.push(Number(item.id)); });
+    }
+    return family;
+  };
   const hasConflict = (courses, weekday, period) => courses.some((course, index) => courses.slice(index + 1).some((other) => {
     const sharedTeacher = course.teacher_ids.some((id) => other.teacher_ids.includes(id));
     const venues = course.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period).map((item) => item.venue_id);
     const otherVenues = other.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period).map((item) => item.venue_id);
-    return sharedTeacher || venues.some((id) => otherVenues.includes(id));
+    return sharedTeacher || venues.some((id) => otherVenues.some((otherId) => [...venueFamily(id)].some((familyId) => venueFamily(otherId).has(familyId))));
   }));
-  return <><PageHeader eyebrow="查看全校课表并处理冲突" title="排课管理" description="按星期和节次查看所有课程。点击课程即可调整任课教师、时间或场地。红色格表示教师或场地冲突。" /><div className="admin-schedule" style={{ gridTemplateColumns: `90px repeat(${weekdays.length}, minmax(180px, 1fr))` }}><div className="schedule-corner">节次</div>{weekdays.map((weekday) => <div className="schedule-column-head" key={weekday}>{dayNames[weekday]}</div>)}{periods.map((period) => [<div className="schedule-period" key={`p-${period}`}>第 {period} 节</div>, ...weekdays.map((weekday) => { const courses = byCell(weekday, period); return <div className={`admin-schedule-cell ${hasConflict(courses, weekday, period) ? 'busy' : ''}`} key={`${weekday}-${period}`}>{courses.map((course) => { const schedules = course.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period); return <button key={course.id} onClick={() => setEditorCourse(course)}><strong>{course.name}</strong><span>{course.teachers.join('、') || '教师待定'}</span><span>{schedules.map((item) => item.venue_name).join('、')}</span></button>; })}</div>; })])}</div>{editorCourse !== undefined ? <CourseEditor api={api} course={editorCourse} meta={state.data.meta} toast={toast} onClose={() => setEditorCourse(undefined)} onSaved={() => { setEditorCourse(undefined); reload(); }} /> : null}</>;
+  const activeCourses = state.data.courses.filter((course) => !['ARCHIVED', 'FINISHED'].includes(course.status));
+  const unscheduled = activeCourses.filter((course) => !course.teacher_ids.length || !course.schedules.length);
+  let conflictCells = 0;
+  periods.forEach((period) => weekdays.forEach((weekday) => { if (hasConflict(byCell(weekday, period), weekday, period)) conflictCells += 1; }));
+  return <>
+    <PageHeader eyebrow="查看全校课表并处理冲突" title="排课管理" description="按星期和节次查看所有课程，点击课程卡片即可调整教师、时间或场地。系统保存时会阻止教师、场地和已报名学生的时间冲突。" />
+    <section className={`schedule-summary ${conflictCells ? 'has-conflict' : ''}`}><div><strong>{activeCourses.length - unscheduled.length}</strong><span>门课程已完成排课</span></div><div><strong>{unscheduled.length}</strong><span>门课程待安排</span></div><div><strong>{conflictCells}</strong><span>{conflictCells ? '个冲突时间格，需要处理' : '个冲突，当前排课正常'}</span></div></section>
+    {unscheduled.length ? <section className="unscheduled-courses"><strong>待完成排课</strong><div>{unscheduled.map((course) => <button key={course.id} onClick={() => setEditorCourse(course)}>{course.name}<span>{!course.teacher_ids.length ? '缺少任课教师' : '缺少上课时间或场地'}</span></button>)}</div></section> : null}
+    <div className="schedule-legend"><span><i className="normal" />正常排课</span><span><i className="conflict" />教师或场地冲突</span><small>整馆与其分区在同一时间也会视为场地冲突</small></div>
+    <div className="admin-schedule" style={{ gridTemplateColumns: `90px repeat(${weekdays.length}, minmax(180px, 1fr))` }}><div className="schedule-corner">节次</div>{weekdays.map((weekday) => <div className="schedule-column-head" key={weekday}>{dayNames[weekday]}</div>)}{periods.map((period) => [<div className="schedule-period" key={`p-${period}`}>第 {period} 节</div>, ...weekdays.map((weekday) => { const courses = byCell(weekday, period); const conflicting = hasConflict(courses, weekday, period); return <div className={`admin-schedule-cell ${conflicting ? 'busy' : ''}`} key={`${weekday}-${period}`}>{conflicting ? <span className="cell-conflict-label">排课冲突</span> : null}{courses.map((course) => { const schedules = course.schedules.filter((item) => Number(item.weekday) === weekday && Number(item.period) === period); return <button key={course.id} title="点击修改这门课程的排课" onClick={() => setEditorCourse(course)}><strong>{course.name}</strong><span>教师：{course.teachers.join('、') || '待安排'}</span><span>场地：{schedules.map((item) => item.venue_name).join('、')}</span><small>点击修改排课</small></button>; })}</div>; })])}</div>
+    {editorCourse !== undefined ? <CourseEditor api={api} course={editorCourse} meta={state.data.meta} toast={toast} onClose={() => setEditorCourse(undefined)} onSaved={() => { setEditorCourse(undefined); reload(); }} /> : null}
+  </>;
 }
 
 export function AdminStudentsPage({ api, toast }) {

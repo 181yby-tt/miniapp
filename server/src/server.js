@@ -16,7 +16,8 @@ const { URL } = require('url');
 const { db, nextId, initStore, save, refreshEnrollmentState, persistEnrollmentMutation } = require('./store');
 const { hashPassword, verifyPassword, sign, verify } = require('./auth');
 const { code2Session } = require('./config');
-const { initRedis, rateLimit, getJson, setJson, invalidate, withStudentLock } = require('./redis');
+const { initRedis, rateLimit, getJson, setJson, invalidate, withScheduleLock, withStudentLock } = require('./redis');
+const scheduleConflicts = require('./schedule-conflicts');
 
 const PORT = process.env.PORT || 3000;
 const STUDENT_PASSWORD_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
@@ -183,46 +184,9 @@ function studentEnrollments(studentId, status) {
   return db.enrollments.filter((e) => e.student_id === studentId && (!status || e.status === status));
 }
 
-// 场地互斥集合（自身 + 父 + 子）
-function expandVenue(vid) {
-  const v = db.venues.find((x) => x.id === vid);
-  const set = new Set([vid]);
-  if (v && v.parent_id) set.add(v.parent_id);
-  db.venues.forEach((x) => { if (x.parent_id === vid) set.add(x.id); });
-  return set;
-}
-
 // 统计参与全局硬冲突（教师 / 场地时间重叠）的课程数量
 function globalConflicts() {
-  const active = db.courses.filter((c) => !['FINISHED', 'ARCHIVED'].includes(c.status));
-  const bySlot = {};
-  active.forEach((c) => {
-    courseSchedules(c.id).forEach((sc) => {
-      (bySlot[sc.time_slot_id] = bySlot[sc.time_slot_id] || []).push(c);
-    });
-  });
-  const conflictIds = new Set();
-  Object.values(bySlot).forEach((list) => {
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i]; const b = list[j];
-        const ta = new Set(db.course_staff.filter((cs) => cs.course_id === a.id).map((cs) => cs.staff_id));
-        const tb = new Set(db.course_staff.filter((cs) => cs.course_id === b.id).map((cs) => cs.staff_id));
-        const teacherOverlap = [...ta].some((x) => tb.has(x));
-        const va = expandVenueSet(a.id); const vb = expandVenueSet(b.id);
-        const venueOverlap = [...va].some((x) => vb.has(x));
-        if (teacherOverlap || venueOverlap) { conflictIds.add(a.id); conflictIds.add(b.id); }
-      }
-    }
-  });
-  return conflictIds.size;
-}
-
-// 课程所有排课场地的互斥集合并集
-function expandVenueSet(courseId) {
-  const set = new Set();
-  courseSchedules(courseId).forEach((sc) => expandVenue(sc.venue_id).forEach((x) => set.add(x)));
-  return set;
+  return scheduleConflicts.globalConflictCourseIds(db).size;
 }
 
 function courseToView(course, student) {
@@ -266,50 +230,14 @@ function studentBusySlots(studentId) {
   return set;
 }
 
-// 教师冲突：返回与新排课重叠的其他课程
-function teacherConflicts(courseId, staffIds, timeSlotIds) {
-  if (!staffIds.length || !timeSlotIds.length) return [];
-  const out = [];
-  db.courses.forEach((c) => {
-    if (c.id === courseId) return;
-    if (['FINISHED', 'ARCHIVED'].includes(c.status)) return;
-    const sharesStaff = db.course_staff.some((cs) => cs.course_id === c.id && staffIds.includes(cs.staff_id));
-    if (!sharesStaff) return;
-    const overlap = db.course_schedules.some((sc) => sc.course_id === c.id && timeSlotIds.includes(sc.time_slot_id));
-    if (overlap) out.push({ course_id: c.id, name: c.name, reason: '教师时间冲突' });
-  });
-  return out;
-}
-
 // 场地冲突：展开场地互斥集合（自身+父+子）后按时段查重
-function venueConflicts(courseId, venueIds, timeSlotIds) {
-  if (!venueIds.length || !timeSlotIds.length) return [];
-  const conflictVenues = new Set();
-  venueIds.forEach((vid) => expandVenue(vid).forEach((x) => conflictVenues.add(x)));
-  const out = [];
-  db.courses.forEach((c) => {
-    if (c.id === courseId) return;
-    if (['FINISHED', 'ARCHIVED'].includes(c.status)) return;
-    const overlap = db.course_schedules.some((sc) => sc.course_id === c.id && timeSlotIds.includes(sc.time_slot_id) && conflictVenues.has(sc.venue_id));
-    if (overlap) out.push({ course_id: c.id, name: c.name, reason: '场地时间冲突' });
-  });
-  return out;
+function venueConflicts(courseId, schedules) {
+  return scheduleConflicts.venueConflicts(db, courseId, schedules);
 }
 
 // 学生冲突：修改时间后，已报名学生是否与其他课程时间重叠
-function studentConflicts(courseId, timeSlotIds) {
-  if (!timeSlotIds.length) return { count: 0, students: [] };
-  const newSlots = new Set();
-  timeSlotIds.forEach((ts) => { const s = db.time_slots.find((t) => t.id === ts); if (s) newSlots.add(`${s.weekday}-${s.period}`); });
-  const affected = [];
-  db.enrollments.filter((e) => e.course_id === courseId && e.status === 'ENROLLED').forEach((e) => {
-    const other = studentEnrollments(e.student_id, 'ENROLLED').filter((x) => x.course_id !== courseId);
-    const busy = new Set();
-    other.forEach((x) => courseSchedules(x.course_id).forEach((sc) => { if (sc.weekday && sc.period) busy.add(`${sc.weekday}-${sc.period}`); }));
-    const hit = [...newSlots].some((s) => busy.has(s));
-    if (hit) { const st = getStudent(e.student_id); affected.push(st ? st.name : `#${e.student_id}`); }
-  });
-  return { count: affected.length, students: affected.slice(0, 20) };
+function studentConflicts(courseId, schedules) {
+  return scheduleConflicts.studentConflicts(db, courseId, schedules);
 }
 
 /* ----------------------------- 报名 / 退课 ----------------------------- */
@@ -691,19 +619,31 @@ const server = http.createServer(async (req, res) => {
 
   if (path === '/api/admin/courses' && method === 'POST') {
     if (!requireStaff()) return;
-    const r = await saveCourse(res, body, null, user, ip);
-    if (r) { await invalidate('open-courses'); ok(res, r); }
+    const release = await lock('admin:schedule');
+    try {
+      const r = await withScheduleLock(() => saveCourse(res, body, null, user, ip));
+      if (r) { await invalidate('open-courses'); ok(res, r); }
+    } catch (error) {
+      if (error.code === 'BUSY_RETRY') return fail(res, error.code, '其他教务人员正在保存排课，请稍后重试', 429);
+      throw error;
+    } finally { release(); }
     return;
   }
 
   if (/^\/api\/admin\/courses\/\d+$/.test(path) && method === 'PUT') {
     if (!requireStaff()) return;
-    const r = await saveCourse(res, body, Number(path.split('/')[4]), user, ip);
-    if (r) { await invalidate('open-courses'); ok(res, r); }
+    const release = await lock('admin:schedule');
+    try {
+      const r = await withScheduleLock(() => saveCourse(res, body, Number(path.split('/')[4]), user, ip));
+      if (r) { await invalidate('open-courses'); ok(res, r); }
+    } catch (error) {
+      if (error.code === 'BUSY_RETRY') return fail(res, error.code, '其他教务人员正在保存排课，请稍后重试', 429);
+      throw error;
+    } finally { release(); }
     return;
   }
 
-  if (/^\/api\/admin\/courses\/\d+\/conflicts$/.test(path) && method === 'GET') {
+  if (/^\/api\/admin\/courses\/\d+\/conflicts$/.test(path) && ['GET', 'POST'].includes(method)) {
     if (!requireStaff()) return;
     return ok(res, previewConflicts(Number(path.split('/')[4]), body));
   }
@@ -712,22 +652,42 @@ const server = http.createServer(async (req, res) => {
     if (!requireStaff()) return;
     const id = Number(path.split('/')[4]);
     const action = path.split('/')[5];
-    const course = getCourse(id);
-    if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
-    if (action === 'open') {
-      const teachers = db.course_staff.filter((item) => item.course_id === id);
-      const schedules = db.course_schedules.filter((item) => item.course_id === id);
-      if (!teachers.length || !schedules.length) {
-        return fail(res, 'COURSE_NOT_READY', '开放报名之前，请先安排任课教师、上课时间和场地', 400);
-      }
+    try {
+      return await withScheduleLock(async () => {
+        const course = getCourse(id);
+        if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
+        const allowedFrom = { open: ['DRAFT', 'CLOSED'], close: ['OPEN'], archive: ['DRAFT', 'CLOSED', 'FINISHED'] };
+        if (!allowedFrom[action].includes(course.status)) {
+          const messages = {
+            open: '只有草稿或已暂停报名的课程可以开放报名',
+            close: '这门课程当前没有开放报名',
+            archive: course.status === 'OPEN' ? '请先暂停学生报名，再将课程移入历史课程' : '这门课程已经移入历史课程',
+          };
+          return fail(res, 'INVALID_STATUS_TRANSITION', messages[action], 409);
+        }
+        if (action === 'open') {
+          const teachers = db.course_staff.filter((item) => item.course_id === id);
+          const schedules = db.course_schedules.filter((item) => item.course_id === id);
+          if (!teachers.length || !schedules.length) {
+            return fail(res, 'COURSE_NOT_READY', '开放报名之前，请先安排任课教师、上课时间和场地', 400);
+          }
+          const conflicts = previewConflicts(id, { teachers: teachers.map((item) => item.staff_id), schedules });
+          if (conflicts.teacher.length || conflicts.venue.length || conflicts.student.count) {
+            return fail(res, 'HARD_CONFLICT', '开放报名失败：当前排课存在冲突', 409, conflicts);
+          }
+        }
+        const before = { status: course.status };
+        course.status = { open: 'OPEN', close: 'CLOSED', archive: 'ARCHIVED' }[action];
+        course.version += 1; course.updated_by = user.id; course.updated_at = new Date().toISOString();
+        await save();
+        audit(user.id, `COURSE_${action.toUpperCase()}`, 'course', id, before, { status: course.status }, ip);
+        await invalidate('open-courses');
+        return ok(res, { course: courseToView(course) });
+      });
+    } catch (error) {
+      if (error.code === 'BUSY_RETRY') return fail(res, error.code, '其他教务人员正在修改课程状态，请稍后重试', 429);
+      throw error;
     }
-    const before = { status: course.status };
-    course.status = { open: 'OPEN', close: 'CLOSED', archive: 'ARCHIVED' }[action];
-    course.version += 1; course.updated_by = user.id; course.updated_at = new Date().toISOString();
-    save();
-    audit(user.id, `COURSE_${action.toUpperCase()}`, 'course', id, before, { status: course.status }, ip);
-    await invalidate('open-courses');
-    return ok(res, { course: courseToView(course) });
   }
 
   if (/^\/api\/admin\/courses\/\d+\/enrollments$/.test(path) && method === 'GET') {
@@ -950,13 +910,10 @@ async function saveCourse(res, body, id, user, ip) {
   if (existing && capacity < existing.active_count) {
     return fail(res, 'CAPACITY_BELOW_ENROLLED', `容量(${capacity})低于当前已报名人数(${existing.active_count})`, 400);
   }
-  const timeSlotIds = schedules.map((s) => s.time_slot_id);
-  const venueIds = schedules.map((s) => s.venue_id);
-
   const conflicts = {
-    teacher: teacherConflicts(id || -1, teachers, timeSlotIds),
-    venue: venueConflicts(id || -1, venueIds, timeSlotIds),
-    student: existing ? studentConflicts(id, timeSlotIds) : { count: 0, students: [] },
+    teacher: scheduleConflicts.teacherConflicts(db, id || -1, teachers, schedules),
+    venue: venueConflicts(id || -1, schedules),
+    student: existing ? studentConflicts(id, schedules) : { count: 0, students: [], reasons: [] },
   };
   if (conflicts.teacher.length || conflicts.venue.length || conflicts.student.count) {
     return fail(res, 'HARD_CONFLICT', '保存失败：存在硬冲突', 409, conflicts);
@@ -989,12 +946,10 @@ async function saveCourse(res, body, id, user, ip) {
 function previewConflicts(id, body) {
   const teachers = Array.isArray(body.teachers) ? body.teachers.map(Number).filter(Boolean) : [];
   const schedules = Array.isArray(body.schedules) ? body.schedules.filter((s) => s.time_slot_id && s.venue_id) : [];
-  const timeSlotIds = schedules.map((s) => s.time_slot_id);
-  const venueIds = schedules.map((s) => s.venue_id);
   return {
-    teacher: teacherConflicts(id || -1, teachers, timeSlotIds),
-    venue: venueConflicts(id || -1, venueIds, timeSlotIds),
-    student: id ? studentConflicts(id, timeSlotIds) : { count: 0, students: [] },
+    teacher: scheduleConflicts.teacherConflicts(db, id || -1, teachers, schedules),
+    venue: venueConflicts(id || -1, schedules),
+    student: id ? studentConflicts(id, schedules) : { count: 0, students: [], reasons: [] },
   };
 }
 

@@ -69,13 +69,13 @@ async function invalidate(key) {
 
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function withStudentLock(studentId, action) {
+async function withDistributedLock(name, action, { waitMilliseconds = 5000, ttlMilliseconds = 8000 } = {}) {
   if (!ready || !client) return action();
-  const key = `lock:student:${studentId}`;
+  const key = `lock:${name}`;
   const token = crypto.randomUUID();
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + waitMilliseconds;
   while (Date.now() < deadline) {
-    const acquired = await client.set(key, token, { NX: true, PX: 8000 });
+    const acquired = await client.set(key, token, { NX: true, PX: ttlMilliseconds });
     if (acquired) {
       try { return await action(); }
       finally {
@@ -91,6 +91,14 @@ async function withStudentLock(studentId, action) {
   throw error;
 }
 
+async function withStudentLock(studentId, action) {
+  return withDistributedLock(`student:${studentId}`, action);
+}
+
+async function withScheduleLock(action) {
+  return withDistributedLock('admin:schedule', action, { waitMilliseconds: 8000, ttlMilliseconds: 15000 });
+}
+
 function isReady() { return ready; }
 
-module.exports = { initRedis, rateLimit, getJson, setJson, invalidate, withStudentLock, isReady };
+module.exports = { initRedis, rateLimit, getJson, setJson, invalidate, withDistributedLock, withScheduleLock, withStudentLock, isReady };

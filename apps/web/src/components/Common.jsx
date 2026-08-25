@@ -45,6 +45,6 @@ export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = fals
 }
 
 export function StatusPill({ status }) {
-  const labels = { OPEN: '开放报名', DRAFT: '草稿', CLOSED: '停止报名', FINISHED: '已结束', ARCHIVED: '已归档', ENROLLED: '已报名', WITHDRAWN: '已退课', CANCELLED: '已取消', ACTIVE: '正常', DISABLED: '停用' };
+  const labels = { OPEN: '开放报名', DRAFT: '尚未开放', CLOSED: '已暂停报名', FINISHED: '课程已结束', ARCHIVED: '历史课程', ENROLLED: '已报名', WITHDRAWN: '已退课', CANCELLED: '已取消', ACTIVE: '正常', DISABLED: '停用' };
   return <span className={`status-pill status-${status}`}>{labels[status] || status || '未知'}</span>;
 }
