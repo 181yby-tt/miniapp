@@ -33,10 +33,10 @@ export default function CourseImportPanel({ api, courses, meta, toast, onImporte
     toast(failed.length ? `已保存 ${saved} 门，${failed.length} 门因冲突或资料问题未保存` : `已导入 ${saved} 门课程`, failed.length ? 'error' : 'success');
   }
 
-  return <section className="course-import-panel">
-    <div><strong>Excel 批量导入课程</strong><span>支持课程名称、分类、容量、教师、星期、节次、场地、状态和课程介绍。同一课程多行会合并为多次排课。</span></div>
-    <label className="upload-button secondary-upload">选择课程 Excel<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} /></label>
+  return <details className="course-import-panel">
+    <summary><strong>Excel 批量导入</strong><span>一次导入多门课程</span></summary>
+    <div className="course-import-body"><span>支持课程名称、分类、容量、教师、星期、节次、场地、状态和课程介绍。同一课程多行会合并为多次排课。</span><label className="upload-button secondary-upload">选择课程 Excel<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} /></label></div>
     {preview ? <div className="course-import-preview"><div><strong>{fileName}</strong><span>{preview.rows.length} 门课程 · {preview.errors.length} 行需修正</span></div>{preview.errors.length ? <div className="import-errors">{preview.errors.slice(0, 6).map((error) => <span key={`${error.row_number}-${error.message}`}>第 {error.row_number} 行：{error.message}</span>)}</div> : null}<button className="primary-compact" disabled={importing || !preview.rows.length} onClick={runImport}>{importing ? '正在导入和检查排课冲突…' : '确认导入课程'}</button></div> : null}
     {failures.length ? <div className="import-errors">{failures.map((item) => <span key={item.name}>{item.name}：{item.message}</span>)}</div> : null}
-  </section>;
+  </details>;
 }

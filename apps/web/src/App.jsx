@@ -60,7 +60,7 @@ export default function App() {
     else if (pathname === '/admin/schedule') page = <AdminSchedulePage api={api} toast={toast} />;
     else if (pathname === '/admin/students') page = <AdminStudentsPage api={api} toast={toast} />;
     else if (pathname === '/admin/resources') page = <AdminResourcesPage api={api} toast={toast} />;
-    else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} />;
+    else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} toast={toast} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
     else if (pathname === '/admin/accounts') page = <AdminAccountsPage api={api} toast={toast} />;
     else page = <AdminDashboardPage api={api} />;
