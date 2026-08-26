@@ -70,7 +70,9 @@ export default function StudentImportPanel({ api, toast, onImported }) {
     finally { setImporting(false); }
   }
 
-  return <div className="student-account-tools">
+  return <details className="student-account-tools">
+    <summary><span><strong>添加或导入学生</strong><small>手动添加单个学生，或使用 Excel 批量导入</small></span><b>展开</b></summary>
+    <div className="student-account-tools-body">
     <section className="paper-card student-manual-card">
       <div className="card-title"><div><p className="eyebrow ink">添加一名学生</p><h2>手动添加学生</h2><span>登录账号自动使用学号，统一初始密码为 <code>{initialPassword}</code></span></div></div>
       <form onSubmit={createSingle}>
@@ -94,5 +96,6 @@ export default function StudentImportPanel({ api, toast, onImported }) {
     </div> : null}
     {credentials.length ? <div className="credential-result"><div><strong>账号已经生成</strong><span>登录账号为学号，统一初始密码为 {initialPassword}。可下载含年级、班级的 Excel 名单发放给学生。</span></div><button onClick={async () => { try { await downloadCredentials(credentials); } catch (error) { toast(error.message || 'Excel 下载失败', 'error'); } }}>下载 Excel 账号表</button><div className="credential-preview">{credentials.slice(0, 5).map((item) => <span key={item.student_no}><strong>{item.name}</strong><code>{item.class_name}</code><code>{item.username}</code></span>)}</div></div> : null}
     </section>
-  </div>;
+    </div>
+  </details>;
 }
