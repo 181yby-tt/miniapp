@@ -6,7 +6,7 @@ services:
       context: ../..
       dockerfile: deploy/tencent-hk/Dockerfile
       args:
-        PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1}
+        PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://zhongwei-edu.com}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -70,8 +70,6 @@ services:
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
       - "80:80"
       - "443:443"
