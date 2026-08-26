@@ -593,26 +593,31 @@ const server = http.createServer(async (req, res) => {
     const username = String(body.username || '').trim();
     const name = String(body.name || '').trim();
     const password = String(body.password || '');
+    const role = body.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'STAFF';
+    const mustChangePassword = body.require_password_change !== false;
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) return fail(res, 'INVALID_USERNAME', '登录账号只能使用 3 至 64 位字母、数字、点、下划线或短横线', 400);
-    if (!name || name.length > 64) return fail(res, 'INVALID_NAME', '教师姓名不能为空且不能超过 64 个字符', 400);
+    if (!name || name.length > 64) return fail(res, 'INVALID_NAME', '姓名不能为空且不能超过 64 个字符', 400);
     if (password.length < 8 || password.length > 128) return fail(res, 'INVALID_PASSWORD', '初始密码必须为 8 至 128 位', 400);
     if (db.users.some((account) => account.username.toLowerCase() === username.toLowerCase())) return fail(res, 'DUPLICATE_USERNAME', '这个登录账号已经存在', 409);
     const now = new Date().toISOString();
     const account = {
       id: nextId('users'), username, display_name: name, password_hash: hashPassword(password),
-      user_type: 'STAFF', status: 'ACTIVE', must_change_password: true,
+      user_type: role, status: 'ACTIVE', must_change_password: mustChangePassword,
       failed_login_count: 0, locked_until: null, wechat_openid: null,
       created_at: now, updated_at: now,
     };
-    const staff = {
-      id: nextId('staff'), user_id: account.id, staff_no: username,
-      name, title: '', department: '', status: 'ACTIVE',
-    };
     db.users.push(account);
-    db.staff.push(staff);
-    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'CREATE_TEACHER_ACCOUNT', target_type: 'teacher_account', target_id: account.id, before_json: null, after_json: JSON.stringify({ username, name, role: 'STAFF' }), ip, created_at: now });
+    let staff = null;
+    if (role === 'STAFF') {
+      staff = {
+        id: nextId('staff'), user_id: account.id, staff_no: username,
+        name, title: '', department: '', status: 'ACTIVE',
+      };
+      db.staff.push(staff);
+    }
+    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'CREATE_ADMIN_ACCOUNT', target_type: 'admin_account', target_id: account.id, before_json: null, after_json: JSON.stringify({ username, name, role, must_change_password: mustChangePassword }), ip, created_at: now });
     await save();
-    return ok(res, { account: { id: account.id, username, name, role: account.user_type, status: account.status, must_change_password: true, created_at: now }, staff });
+    return ok(res, { account: { id: account.id, username, name, role: account.user_type, status: account.status, must_change_password: mustChangePassword, created_at: now }, staff });
   }
 
   if (/^\/api\/admin\/meta\/(staff|venues|categories|time-slots)$/.test(path) && method === 'POST') {

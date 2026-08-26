@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { navigate } from '../runtime/browser.js';
 import { accountNameForSession, canManageTeacherAccounts } from '../runtime/account.js';
 
 const studentItems = [
   ['/courses', '课程', 'courses'], ['/enrollments', '我的课程', 'check'], ['/schedule', '课表', 'calendar'], ['/profile', '我的', 'user'],
 ];
-const adminItems = [
-  ['/admin', '工作台', 'dashboard'], ['/admin/students', '学生管理', 'users'], ['/admin/courses', '课程管理', 'courses'], ['/admin/schedule', '排课管理', 'calendar'], ['/admin/resources', '基础数据', 'database'], ['/admin/enrollments', '报名管理', 'clipboard'], ['/admin/settings', '规则与记录', 'settings'],
+const adminDailyItems = [
+  ['/admin', '工作台', 'dashboard'], ['/admin/students', '学生管理', 'users'], ['/admin/courses', '课程管理', 'courses'], ['/admin/schedule', '排课管理', 'calendar'], ['/admin/enrollments', '报名管理', 'clipboard'],
+];
+const adminSystemItems = [
+  ['/admin/resources', '排课设置', 'database'], ['/admin/settings', '规则与记录', 'settings'],
 ];
 
 const iconPaths = {
@@ -19,6 +23,7 @@ const iconPaths = {
   check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.7 2.7L16.5 9" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
   account: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0M18 3v4M16 5h4" /></>,
+  more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
 };
 
 function NavIcon({ name }) {
@@ -27,9 +32,15 @@ function NavIcon({ name }) {
 
 export default function AppShell({ session, pathname, profile, onLogout, children }) {
   const isAdmin = ['STAFF', 'SUPER_ADMIN'].includes(session.user_type);
-  const items = isAdmin ? [...adminItems, ...(canManageTeacherAccounts(session) ? [['/admin/accounts', '教师账号', 'account']] : [])] : studentItems;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const systemItems = isAdmin ? [...adminSystemItems, ...(canManageTeacherAccounts(session) ? [['/admin/accounts', '账号管理', 'account']] : [])] : [];
+  const items = isAdmin ? [...adminDailyItems, ...systemItems] : studentItems;
+  const mobilePrimaryItems = isAdmin ? adminDailyItems.slice(0, 4) : studentItems;
+  const mobileMoreItems = isAdmin ? [...adminDailyItems.slice(4), ...systemItems] : [];
   const accountName = accountNameForSession(session, profile);
   const isActive = (path) => path === '/admin' ? pathname === path : pathname === path || pathname.startsWith(`${path}/`);
+  const go = (path) => { setMobileMenuOpen(false); navigate(path); };
+  const navButton = ([path, label, icon]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => go(path)}><span><NavIcon name={icon} /></span>{label}</button>;
   return (
     <div className={`product-shell ${isAdmin ? 'admin-mode' : 'student-mode'}`}>
       <aside className="side-rail">
@@ -37,7 +48,7 @@ export default function AppShell({ session, pathname, profile, onLogout, childre
         <div className="rail-brand"><strong>选课排课</strong><span>{isAdmin ? '教务管理后台' : '学生选课中心'}</span></div>
         <div className="role-chip">{isAdmin ? '管理端' : '学生端'}</div>
         <nav className="primary-nav" aria-label="主导航">
-          {items.map(([path, label, icon]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => navigate(path)}><span><NavIcon name={icon} /></span>{label}</button>)}
+          {isAdmin ? <><p className="nav-group-label">日常教务</p>{adminDailyItems.map(navButton)}<p className="nav-group-label">系统设置</p>{systemItems.map(navButton)}</> : items.map(navButton)}
         </nav>
         <div className="rail-account">
           <span className="account-avatar">{(accountName || '我').slice(0, 1)}</span>
@@ -46,9 +57,11 @@ export default function AppShell({ session, pathname, profile, onLogout, childre
         </div>
       </aside>
       <div className="content-column"><main className="page-content">{children}</main></div>
-      <nav className="mobile-nav" aria-label="移动端导航" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(64px, 1fr))` }}>
-        {items.map(([path, label, icon]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => navigate(path)}><span><NavIcon name={icon} /></span><small>{label}</small></button>)}
+      <nav className="mobile-nav" aria-label="移动端导航" style={{ gridTemplateColumns: `repeat(${mobilePrimaryItems.length + (isAdmin ? 1 : 0)}, minmax(0, 1fr))` }}>
+        {mobilePrimaryItems.map(([path, label, icon]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => go(path)}><span><NavIcon name={icon} /></span><small>{label}</small></button>)}
+        {isAdmin ? <button className={mobileMoreItems.some(([path]) => isActive(path)) || mobileMenuOpen ? 'active' : ''} onClick={() => setMobileMenuOpen(true)}><span><NavIcon name="more" /></span><small>更多</small></button> : null}
       </nav>
+      {mobileMenuOpen ? <div className="mobile-more-backdrop" role="presentation" onClick={() => setMobileMenuOpen(false)}><section className="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="更多管理功能" onClick={(event) => event.stopPropagation()}><header><strong>更多管理</strong><button onClick={() => setMobileMenuOpen(false)}>完成</button></header><div>{mobileMoreItems.map(([path, label, icon]) => <button key={path} className={isActive(path) ? 'active' : ''} onClick={() => go(path)}><span><NavIcon name={icon} /></span><strong>{label}</strong><small>›</small></button>)}</div></section></div> : null}
     </div>
   );
 }
