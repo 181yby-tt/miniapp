@@ -496,6 +496,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .mobile-more-sheet > div > button > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: var(--ui-blue); background: #eef6ff; }
   .mobile-more-sheet svg { width: 19px; height: 19px; }
   .mobile-more-sheet small { color: var(--ui-muted); font-size: 20px; }
+  .mobile-more-account { min-height: 66px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px; margin-top: 8px; border-top: 1px solid var(--ui-border); padding: 12px 10px 2px; }
+  .mobile-more-account .account-avatar { width: 34px; height: 34px; }
+  .mobile-more-account > div { display: grid; gap: 2px; }
+  .mobile-more-account > div strong { font-size: 14px; }
+  .mobile-more-account > div small { font-size: 11px; }
+  .mobile-more-account > button { min-height: 38px; border: 0; border-radius: 10px; padding: 0 13px; color: #d93025; background: #fff1f0; font-weight: 650; }
   .page-header { gap: 16px; margin-bottom: 25px; }
   .page-header h1 { font-size: clamp(38px,10vw,48px); }
   .page-description { font-size: 13px; }
