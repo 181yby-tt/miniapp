@@ -1,0 +1,51 @@
+name: Provision production super administrator
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: Super administrator login username
+        required: true
+        type: string
+      display_name:
+        description: Display name shown in the administrator list
+        required: true
+        type: string
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure dedicated deployment key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Provision visible super administrator
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SUPER_ADMIN_USERNAME: ${{ inputs.username }}
+          SUPER_ADMIN_NAME: ${{ inputs.display_name }}
+          SUPER_ADMIN_PASSWORD: ${{ secrets.PROVISION_SUPER_ADMIN_PASSWORD }}
+        run: |
+          test -n "$SUPER_ADMIN_PASSWORD"
+          PASSWORD_B64="$(printf '%s' "$SUPER_ADMIN_PASSWORD" | base64 -w 0)"
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            bash -s -- "$SUPER_ADMIN_USERNAME" "$SUPER_ADMIN_NAME" "$PASSWORD_B64" <<'REMOTE'
+          set -euo pipefail
+          cd /home/ubuntu/miniapp
+          password="$(printf '%s' "$3" | base64 -d)"
+          sudo docker compose -f deploy/tencent-hk/docker-compose.yml exec -T \
+            -e SUPER_ADMIN_USERNAME="$1" \
+            -e SUPER_ADMIN_NAME="$2" \
+            -e SUPER_ADMIN_PASSWORD="$password" \
+            app node server/tools/provision-super-admin.js
+          REMOTE
