@@ -3,10 +3,10 @@ import { navigate } from '../runtime/browser.js';
 import { accountNameForSession, canManageTeacherAccounts } from '../runtime/account.js';
 
 const studentItems = [
-  ['/courses', '课程', 'courses'], ['/enrollments', '我的课程', 'check'], ['/schedule', '课表', 'calendar'], ['/profile', '我的', 'user'],
+  ['/courses', '填报志愿', 'courses'], ['/enrollments', '分配结果', 'check'], ['/schedule', '课表', 'calendar'], ['/profile', '我的', 'user'],
 ];
 const adminDailyItems = [
-  ['/admin', '工作台', 'dashboard'], ['/admin/students', '学生管理', 'users'], ['/admin/courses', '课程管理', 'courses'], ['/admin/schedule', '排课管理', 'calendar'], ['/admin/enrollments', '报名管理', 'clipboard'],
+  ['/admin', '工作台', 'dashboard'], ['/admin/students', '学生管理', 'users'], ['/admin/courses', '项目管理', 'courses'], ['/admin/groups', '教学组与分配', 'clipboard'], ['/admin/schedule', '排课管理', 'calendar'],
 ];
 const adminSystemItems = [
   ['/admin/resources', '排课设置', 'database'], ['/admin/settings', '规则与记录', 'settings'],

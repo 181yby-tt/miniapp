@@ -161,6 +161,61 @@ CREATE TABLE IF NOT EXISTS `enrollments` (
   KEY `idx_enroll_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `teaching_groups` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(128) NOT NULL,
+  `grade_id` BIGINT UNSIGNED NOT NULL,
+  `status` ENUM('DRAFT','OPEN','CLOSED','ALLOCATED','PUBLISHED','ARCHIVED') NOT NULL DEFAULT 'DRAFT',
+  `preference_count` TINYINT NOT NULL DEFAULT 2,
+  `allow_adjustment` TINYINT(1) NOT NULL DEFAULT 0,
+  `submission_start_at` DATETIME DEFAULT NULL,
+  `submission_end_at` DATETIME DEFAULT NULL,
+  `published_at` DATETIME DEFAULT NULL,
+  `created_by` BIGINT UNSIGNED DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), KEY `idx_group_grade` (`grade_id`), KEY `idx_group_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `teaching_group_classes` (
+  `group_id` BIGINT UNSIGNED NOT NULL, `class_id` BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (`group_id`,`class_id`), KEY `idx_group_class` (`class_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `teaching_group_courses` (
+  `group_id` BIGINT UNSIGNED NOT NULL, `course_id` BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (`group_id`,`course_id`), KEY `idx_group_course` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `preference_submissions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `group_id` BIGINT UNSIGNED NOT NULL, `student_id` BIGINT UNSIGNED NOT NULL,
+  `status` ENUM('SUBMITTED','CANCELLED') NOT NULL DEFAULT 'SUBMITTED',
+  `submitted_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), UNIQUE KEY `uk_preference_student_group` (`student_id`,`group_id`), KEY `idx_preference_group` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `preference_choices` (
+  `submission_id` BIGINT UNSIGNED NOT NULL, `rank` TINYINT NOT NULL, `course_id` BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (`submission_id`,`rank`), UNIQUE KEY `uk_preference_course` (`submission_id`,`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `allocation_runs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `group_id` BIGINT UNSIGNED NOT NULL,
+  `seed` VARCHAR(128) NOT NULL, `status` ENUM('SIMULATED','PUBLISHED','SUPERSEDED') NOT NULL DEFAULT 'SIMULATED',
+  `summary_json` TEXT, `created_by` BIGINT UNSIGNED DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, `published_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`id`), KEY `idx_allocation_group` (`group_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `allocation_results` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `run_id` BIGINT UNSIGNED NOT NULL,
+  `group_id` BIGINT UNSIGNED NOT NULL, `student_id` BIGINT UNSIGNED NOT NULL, `course_id` BIGINT UNSIGNED NOT NULL,
+  `source_rank` TINYINT DEFAULT NULL, `allocation_type` ENUM('PREFERENCE','ADJUSTED') NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), UNIQUE KEY `uk_allocation_student_run` (`run_id`,`student_id`), KEY `idx_allocation_group_course` (`group_id`,`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `system_configs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `config_key` VARCHAR(64) NOT NULL,

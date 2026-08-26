@@ -36,6 +36,13 @@ const db = {
   course_staff: [],
   course_schedules: [],
   enrollments: [],
+  teaching_groups: [],
+  teaching_group_classes: [],
+  teaching_group_courses: [],
+  preference_submissions: [],
+  preference_choices: [],
+  allocation_runs: [],
+  allocation_results: [],
   system_configs: [],
   audit_logs: [],
 };
@@ -190,6 +197,8 @@ const COLLECTIONS = [
   'users', 'grades', 'classes', 'students', 'staff',
   'course_categories', 'venues', 'time_slots', 'courses',
   'course_staff', 'course_schedules', 'enrollments',
+  'teaching_groups', 'teaching_group_classes', 'teaching_group_courses',
+  'preference_submissions', 'preference_choices', 'allocation_runs', 'allocation_results',
   'system_configs', 'audit_logs',
 ];
 
@@ -198,6 +207,10 @@ const DATETIME_COLS = {
   users: ['created_at', 'updated_at', 'locked_until'],
   courses: ['created_at', 'updated_at'],
   enrollments: ['enrolled_at', 'cancelled_at'],
+  teaching_groups: ['submission_start_at', 'submission_end_at', 'published_at', 'created_at', 'updated_at'],
+  preference_submissions: ['submitted_at', 'updated_at'],
+  allocation_runs: ['created_at', 'published_at'],
+  allocation_results: ['created_at'],
   system_configs: ['updated_at'],
   audit_logs: ['created_at'],
 };
@@ -206,6 +219,7 @@ const DATETIME_COLS = {
 const JSON_TEXT_COLS = {
   courses: ['allowed_scope_json'],
   audit_logs: ['before_json', 'after_json'],
+  allocation_runs: ['summary_json'],
 };
 
 function toSqlDatetime(v) {

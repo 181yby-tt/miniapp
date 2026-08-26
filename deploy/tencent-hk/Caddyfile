@@ -1,4 +1,4 @@
-{$SITE_ADDRESS::80} {
+zhongwei-edu.com, www.zhongwei-edu.com {
   encode zstd gzip
   reverse_proxy app:8080
 
@@ -12,4 +12,8 @@
     output stdout
     format console
   }
+}
+
+sparkluv-ai.cc, www.sparkluv-ai.cc {
+  redir https://zhongwei-edu.com{uri} permanent
 }

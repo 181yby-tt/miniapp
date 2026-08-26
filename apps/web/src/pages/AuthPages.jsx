@@ -24,7 +24,7 @@ export function LoginPage({ api, sessionStore, onSession }) {
     <main className="login-page">
       <section className="brand-panel" aria-label="平台介绍">
         <div className="brand-mark">课</div>
-        <div><p className="eyebrow">铁英中学</p><h1>选课排课</h1><p className="brand-copy">课程、排课与报名管理</p></div>
+        <div><p className="eyebrow">铁英中学</p><h1>选课排课</h1><p className="brand-copy">体育选项课志愿与排课管理</p></div>
       </section>
       <section className="login-panel">
         <form className="login-card" onSubmit={submit}>

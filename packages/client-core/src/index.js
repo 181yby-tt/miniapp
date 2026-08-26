@@ -85,6 +85,8 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
     getEnrollments: () => request('/api/me/enrollments'),
     getSchedule: () => request('/api/me/schedule'),
     getProfile: () => request('/api/me/profile'),
+    getCurrentPreferences: () => request('/api/preferences/current'),
+    saveCurrentPreferences: (courseIds) => request('/api/preferences/current', { method: 'PUT', body: { course_ids: courseIds } }),
     getAdminDashboard: () => request('/api/admin/dashboard'),
     getAdminMeta: () => request('/api/admin/meta'),
     getAdminCourses: () => request('/api/admin/courses'),
@@ -104,6 +106,12 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
     getAdminAudit: () => request('/api/admin/audit'),
     getAdminAccounts: () => request('/api/admin/accounts'),
     createAdminAccount: (payload) => request('/api/admin/accounts', { method: 'POST', body: payload }),
+    getTeachingGroups: () => request('/api/admin/teaching-groups'),
+    createTeachingGroup: (payload) => request('/api/admin/teaching-groups', { method: 'POST', body: payload }),
+    setTeachingGroupStatus: (groupId, action) => request(`/api/admin/teaching-groups/${groupId}/${action}`, { method: 'POST', body: {} }),
+    getTeachingGroupAllocation: (groupId) => request(`/api/admin/teaching-groups/${groupId}/allocation`),
+    simulateTeachingGroupAllocation: (groupId, seed) => request(`/api/admin/teaching-groups/${groupId}/simulate`, { method: 'POST', body: seed ? { seed } : {} }),
+    publishTeachingGroupAllocation: (groupId, confirmIncomplete = false) => request(`/api/admin/teaching-groups/${groupId}/publish`, { method: 'POST', body: { confirm_incomplete: confirmIncomplete } }),
   };
 }
 
