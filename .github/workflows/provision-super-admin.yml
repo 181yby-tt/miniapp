@@ -43,9 +43,31 @@ jobs:
           set -euo pipefail
           cd /home/ubuntu/miniapp
           password="$(printf '%s' "$3" | base64 -d)"
-          sudo docker compose -f deploy/tencent-hk/docker-compose.yml exec -T \
+          compose=(sudo docker compose -f deploy/tencent-hk/docker-compose.yml)
+
+          restart_app() {
+            "${compose[@]}" up -d app >/dev/null
+          }
+          trap restart_app EXIT
+
+          # The application keeps a database snapshot in memory. Stop it before
+          # changing users so a stale snapshot cannot overwrite this account.
+          "${compose[@]}" stop app
+          "${compose[@]}" run --rm --no-deps -T \
             -e SUPER_ADMIN_USERNAME="$1" \
             -e SUPER_ADMIN_NAME="$2" \
             -e SUPER_ADMIN_PASSWORD="$password" \
             app node server/tools/provision-super-admin.js
+
+          restart_app
+          trap - EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Application did not become healthy after provisioning" >&2
+          exit 1
           REMOTE
