@@ -16,10 +16,11 @@ const { db, nextId, initStore, save, waitForSaves, refreshEnrollmentState, persi
 const { enrollmentPolicy, inEnrollmentScope, courseEnrollmentScope } = require('./enrollment-policy');
 const { createRequestGate } = require('./request-gate');
 const { buildEnrollmentRoster } = require('./enrollment-roster');
-const { hashPassword, verifyPassword, sign, verify } = require('./auth');
+const { hashPassword, verifyPassword, sign, verify, credentialTag } = require('./auth');
 const { code2Session } = require('./config');
 const { initRedis, rateLimit, getJson, setJson, invalidate, withScheduleLock, withStudentLock } = require('./redis');
-const scheduleConflicts = require('./schedule-conflicts');
+const { teacherNames } = require('./course-teachers');
+const { deletionPreview, deleteStudents } = require('./student-deletion');
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_CONSOLE_FILE = pathlib.resolve(__dirname, '..', '..', 'admin-console.html');
@@ -145,6 +146,7 @@ function getAuth(req) {
   const payload = verify(token);
   if (!payload) return null;
   const user = db.users.find((u) => u.id === payload.uid);
+  if (user && (user.user_type === 'STUDENT' || payload.user_type === 'STUDENT') && payload.credential !== credentialTag(user)) return null;
   return user && user.status !== 'DISABLED' ? user : null;
 }
 
@@ -164,37 +166,24 @@ const getStudentByUser = (uid) => db.students.find((s) => s.user_id === uid);
 const getStudent = (id) => db.students.find((s) => s.id === Number(id));
 
 function courseTeachers(courseId) {
-  return db.course_staff.filter((cs) => cs.course_id === courseId)
-    .map((cs) => db.staff.find((s) => s.id === cs.staff_id))
-    .filter(Boolean).map((s) => s.name);
+  return teacherNames(db, getCourse(courseId));
 }
 
-function courseSchedules(courseId) {
-  return db.course_schedules.filter((sc) => sc.course_id === courseId).map((sc) => {
-    const slot = db.time_slots.find((t) => t.id === sc.time_slot_id);
-    const venue = db.venues.find((v) => v.id === sc.venue_id);
-    return { time_slot_id: sc.time_slot_id, venue_id: sc.venue_id, weekday: slot ? slot.weekday : null, period: slot ? slot.period : null, slot_name: slot ? slot.name : '', venue_name: venue ? venue.name : '' };
-  });
-}
+function courseSchedules() { return []; }
 
 function studentEnrollments(studentId, status) {
   return db.enrollments.filter((e) => e.student_id === studentId && (!status || e.status === status));
 }
 
-// 统计参与全局硬冲突（教师 / 场地时间重叠）的课程数量
-function globalConflicts() {
-  return scheduleConflicts.globalConflictCourseIds(db).size;
-}
 
 function courseToView(course, student) {
   const teachers = courseTeachers(course.id);
-  const schedules = courseSchedules(course.id);
   const enrolled = student ? studentEnrollments(student.id, 'ENROLLED').some((e) => e.course_id === course.id) : false;
   const remaining = Math.max(0, course.capacity - course.active_count);
   return {
     id: course.id, name: course.name, category: (db.course_categories.find((c) => c.id === course.category_id) || {}).name || '',
     description: course.description, cover_url: course.cover_url, capacity: course.capacity, active_count: course.active_count,
-    remaining, status: course.status, teachers, schedules,
+    remaining, status: course.status, teachers, schedules: [], teacher_names: teachers.join('、'),
     allowed_scope: courseEnrollmentScope(db, course),
     enrolled, version: course.version,
     enroll_start_at: course.enroll_start_at, enroll_end_at: course.enroll_end_at,
@@ -287,14 +276,10 @@ function studentBusySlots(studentId) {
 }
 
 // 场地冲突：展开场地互斥集合（自身+父+子）后按时段查重
-function venueConflicts(courseId, schedules) {
-  return scheduleConflicts.venueConflicts(db, courseId, schedules);
-}
+
 
 // 学生冲突：修改时间后，已报名学生是否与其他课程时间重叠
-function studentConflicts(courseId, schedules) {
-  return scheduleConflicts.studentConflicts(db, courseId, schedules);
-}
+
 
 /* ----------------------------- 报名 / 退课 ----------------------------- */
 
@@ -360,7 +345,6 @@ async function doWithdraw(req, res, courseId, source, actorUser, body) {
       if (!existing || existing.status !== 'ENROLLED') return ok(res, { status: existing ? existing.status : 'NONE', released: 0 });
       if (source === 'STUDENT') {
         if (course.status !== 'OPEN' || (course.enroll_end_at && Date.now() >= new Date(course.enroll_end_at).getTime())) return fail(res, 'WITHDRAW_CLOSED', '报名已停止，如需退课请联系老师', 409);
-        if (course.course_start_date && Date.now() >= new Date(`${course.course_start_date}T00:00:00+08:00`).getTime() && getConfig('enrollment.allow_withdraw_after_start', 'false') !== 'true') return fail(res, 'WITHDRAW_CLOSED', '课程已经开始，如需退课请联系老师', 409);
       }
       const now = new Date().toISOString();
       const rec = { ...existing, status: 'CANCELLED', cancelled_at: now, operated_by: actorUser ? actorUser.id : null, reason: body?.reason || (source === 'STUDENT' ? '学生主动退课' : '管理员代退课') };
@@ -408,7 +392,7 @@ async function handleRequest(req, res, acquireWrite) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname;
   const method = req.method;
-  const user = getAuth(req);
+  let user = getAuth(req);
   const ip = requestIp(req);
   if (path.startsWith('/api/') && path !== '/api/health') {
     const globalLimit = parseInt(process.env.RATE_LIMIT_GLOBAL_PER_SECOND || '2500', 10);
@@ -421,7 +405,11 @@ async function handleRequest(req, res, acquireWrite) {
     const loginIdentity = String(body.username || 'unknown').trim().toLowerCase();
     if (!await enforceRateLimit(res, `login:${ip}:${loginIdentity}`, parseInt(process.env.RATE_LIMIT_LOGIN_PER_ACCOUNT_PER_MINUTE || '10', 10), 60)) return;
   }
-  if (['POST', 'PUT', 'DELETE'].includes(method) && path !== '/api/auth/login') await acquireWrite();
+  if (['POST', 'PUT', 'DELETE'].includes(method) && path !== '/api/auth/login') {
+    await acquireWrite();
+    // 排队期间账号可能已被删除或重置密码，不能沿用旧鉴权结果。
+    user = getAuth(req);
+  }
 
   const requireUser = () => { if (!user) { fail(res, 'UNAUTHORIZED', '请先登录', 401); return false; } return true; };
   const requireStaff = () => { if (!user || !['STAFF', 'SUPER_ADMIN'].includes(user.user_type)) { fail(res, 'FORBIDDEN', '无权访问', 403); return false; } return true; };
@@ -437,7 +425,7 @@ async function handleRequest(req, res, acquireWrite) {
     if (!u || !verifyPassword(body.password || '', u.password_hash)) return fail(res, 'INVALID_CREDENTIALS', '账号或密码不正确', 401);
     if (u.locked_until && new Date(u.locked_until) > new Date()) return fail(res, 'ACCOUNT_LOCKED', '账号已锁定，请稍后再试', 423);
     if (u.status === 'DISABLED') return fail(res, 'ACCOUNT_DISABLED', '账号已停用', 403);
-    const token = sign({ uid: u.id, user_type: u.user_type });
+    const token = sign({ uid: u.id, user_type: u.user_type, credential: credentialTag(u) });
     return ok(res, { token, user_type: u.user_type, must_change_password: u.user_type === 'STUDENT' && Boolean(u.must_change_password), username: u.username, display_name: u.display_name || u.username });
   }
 
@@ -453,7 +441,7 @@ async function handleRequest(req, res, acquireWrite) {
     }
     const u = db.users.find((x) => x.wechat_openid === wx.openid);
     if (u && u.status !== 'DISABLED') {
-      const token = sign({ uid: u.id, user_type: u.user_type });
+      const token = sign({ uid: u.id, user_type: u.user_type, credential: credentialTag(u) });
       return ok(res, { token, user_type: u.user_type, must_change_password: u.user_type === 'STUDENT' && Boolean(u.must_change_password), username: u.username, display_name: u.display_name || u.username, openid: wx.openid });
     }
     // 未绑定：返回 openid，交由小程序走「学号 + 密码」绑定流程
@@ -470,7 +458,7 @@ async function handleRequest(req, res, acquireWrite) {
     u.wechat_openid = openid;
     u.updated_at = new Date().toISOString();
     save();
-    const token = sign({ uid: u.id, user_type: u.user_type });
+    const token = sign({ uid: u.id, user_type: u.user_type, credential: credentialTag(u) });
     return ok(res, { token, user_type: u.user_type, must_change_password: u.user_type === 'STUDENT' && Boolean(u.must_change_password), username: u.username, display_name: u.display_name || u.username });
   }
 
@@ -510,7 +498,7 @@ async function handleRequest(req, res, acquireWrite) {
     try { await save({ strict: true }); }
     catch (error) { Object.assign(user, previous); throw error; }
     audit(user.id, 'CHANGE_PASSWORD', 'user', user.id, null, null, ip);
-    return ok(res, { changed: true });
+    return ok(res, { changed: true, token: sign({ uid: user.id, user_type: user.user_type, credential: credentialTag(user) }) });
   }
 
   // 拦截旧版本写入口，防止模拟发布覆盖当前抢课名单。
@@ -589,6 +577,7 @@ async function handleRequest(req, res, acquireWrite) {
 
   if (path === '/api/me/profile' && method === 'GET') {
     const student = getStudentByUser(user.id);
+    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生资料不存在', 404);
     const grade = db.grades.find((g) => g.id === student.grade_id);
     const cls = db.classes.find((c) => c.id === student.class_id);
     return ok(res, { student_no: student.student_no, name: student.name, grade: grade ? grade.name : '', class_name: cls ? cls.name : '', username: user.username });
@@ -633,7 +622,7 @@ async function handleRequest(req, res, acquireWrite) {
       total_seats: totalSeats, used_seats: usedSeats, fill_rate: fillRate,
       near_full_courses: nearFull, top_fill_courses: topFill,
       students_by_grade: studentsByGrade, students_wechat_bound: studentsWechatBound, students_need_pwd: studentsNeedPwd,
-      category_distribution: categoryDistribution, conflict_courses: globalConflicts(),
+      category_distribution: categoryDistribution, conflict_courses: 0,
       recent_enrollments: recentEnrollments,
       recent_audit: db.audit_logs.slice(-8).reverse(),
       teaching_groups: db.teaching_groups.filter((group) => group.status !== 'ARCHIVED').length,
@@ -845,17 +834,6 @@ async function handleRequest(req, res, acquireWrite) {
           };
           return fail(res, 'INVALID_STATUS_TRANSITION', messages[action], 409);
         }
-        if (action === 'open') {
-          const teachers = db.course_staff.filter((item) => item.course_id === id);
-          const schedules = db.course_schedules.filter((item) => item.course_id === id);
-          if (!teachers.length || !schedules.length) {
-            return fail(res, 'COURSE_NOT_READY', '开放报名之前，请先安排任课教师、上课时间和场地', 400);
-          }
-          const conflicts = previewConflicts(id, { teachers: teachers.map((item) => item.staff_id), schedules });
-          if (conflicts.teacher.length || conflicts.venue.length || conflicts.student.count) {
-            return fail(res, 'HARD_CONFLICT', '开放报名失败：当前排课存在冲突', 409, conflicts);
-          }
-        }
         const before = { status: course.status };
         course.status = { open: 'OPEN', close: 'CLOSED', archive: 'ARCHIVED' }[action];
         course.version += 1; course.updated_by = user.id; course.updated_at = new Date().toISOString();
@@ -891,6 +869,28 @@ async function handleRequest(req, res, acquireWrite) {
     const record = db.enrollments.find((item) => item.id === Number(path.split('/')[4]));
     if (!record) return fail(res, 'NOT_FOUND', '报名记录不存在', 404);
     return doWithdraw(req, res, record.course_id, 'STAFF', user, { ...body, student_id: record.student_id });
+  }
+
+  if (['/api/admin/students/delete-preview', '/api/admin/students/delete-confirm'].includes(path) && method === 'POST') {
+    if (!requireStaff()) return;
+    if (path.endsWith('delete-preview')) {
+      let preview;
+      try { preview = deletionPreview(db, body.student_nos); } catch (error) { return fail(res, 'INVALID_STUDENT_LIST', error.message, 400); }
+      return ok(res, { ...preview, confirmation_token: sign({ purpose:'delete-students', actor:user.id, student_nos:preview.student_nos, digest:preview.digest, expires:Date.now()+600000 }) });
+    }
+    const ticket = verify(body.confirmation_token);
+    if (!ticket || ticket.purpose !== 'delete-students' || ticket.actor !== user.id || ticket.expires < Date.now()) return fail(res, 'PREVIEW_EXPIRED', '预览已失效，请重新上传并核对名单', 409);
+    const preview = deletionPreview(db, ticket.student_nos);
+    if (ticket.digest !== preview.digest || body.confirm_count !== preview.matches.length || !preview.matches.length) return fail(res, 'PREVIEW_CHANGED', '名单或报名记录已变化，请重新预览确认', 409);
+    const collections = ['students','users','enrollments','preference_submissions','preference_choices','allocation_results','courses','audit_logs'];
+    const before = Object.fromEntries(collections.map((key) => [key, structuredClone(db[key])]));
+    try {
+      deleteStudents(db, preview);
+      db.audit_logs.push({ id:nextId('audit_logs'), actor_id:user.id, action:'DELETE_STUDENTS', target_type:'student', target_id:null, before_json:null, after_json:JSON.stringify({ student_nos:preview.student_nos.filter((n) => !preview.not_found.includes(n)), deleted_count:preview.matches.length, released_count:preview.release_count }), ip, created_at:new Date().toISOString() });
+      await save({ strict:true });
+    } catch (error) { for (const key of collections) db[key] = before[key]; throw error; }
+    await invalidate('open-courses');
+    return ok(res, { deleted_count:preview.matches.length, released_count:preview.release_count });
   }
 
   if (path === '/api/admin/students' && method === 'GET') {
@@ -1107,18 +1107,10 @@ async function saveCourse(res, body, id, user, ip) {
   if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 100000) return fail(res, 'INVALID_PARAM', '课程容量必须为 1 至 100000 的整数', 400);
   const categoryId = Number(body.category_id);
   if (!db.course_categories.some((category) => category.id === categoryId)) return fail(res, 'INVALID_CATEGORY', '请选择有效的课程分类', 400);
-  const teachers = Array.isArray(body.teachers) ? body.teachers.map(Number).filter(Boolean) : (body.teacher_id ? [Number(body.teacher_id)] : []);
-  if (teachers.some((staffId) => !db.staff.some((staff) => staff.id === staffId))) return fail(res, 'INVALID_TEACHER', '任课教师资料不存在，请刷新页面后重试', 400);
-  const rawSchedules = Array.isArray(body.schedules) ? body.schedules : [];
-  if (rawSchedules.some((schedule) => !schedule.time_slot_id || !schedule.venue_id)) return fail(res, 'INVALID_SCHEDULE', '每条排课都必须选择时间段和场地', 400);
-  const schedules = rawSchedules.map((schedule) => ({ time_slot_id: String(schedule.time_slot_id), venue_id: Number(schedule.venue_id) }));
-  if (schedules.some((schedule) => !db.time_slots.some((slot) => slot.id === schedule.time_slot_id))) return fail(res, 'INVALID_TIME_SLOT', '排课时间段不存在，请刷新页面后重试', 400);
-  if (schedules.some((schedule) => !db.venues.some((venue) => venue.id === schedule.venue_id))) return fail(res, 'INVALID_VENUE', '排课场地不存在，请刷新页面后重试', 400);
-  const scheduleKeys = schedules.map((schedule) => `${schedule.time_slot_id}|${schedule.venue_id}`);
-  if (new Set(scheduleKeys).size !== scheduleKeys.length) return fail(res, 'DUPLICATE_SCHEDULE', '同一时间和场地不能重复添加', 400);
+  const teacherText = body.teacher_names === undefined ? teacherNames(db, id ? getCourse(id) : null).join('、') : body.teacher_names;
+  if (typeof teacherText !== 'string' || teacherText.length > 500) return fail(res, 'INVALID_TEACHER', '任课教师姓名不能超过 500 字', 400);
   const status = body.status || 'DRAFT';
   if (!['DRAFT', 'OPEN', 'CLOSED', 'FINISHED', 'ARCHIVED'].includes(status)) return fail(res, 'INVALID_STATUS', '课程状态无效', 400);
-  if (status === 'OPEN' && (!teachers.length || !schedules.length)) return fail(res, 'COURSE_NOT_READY', '开放报名的课程必须安排教师、上课时间和场地', 400);
 
   const allowedScope = body.allowed_scope || (id && getCourse(id) ? courseEnrollmentScope(db, getCourse(id)) : { type: 'all' });
   if (!['all', 'grades', 'classes', 'groups'].includes(allowedScope.type)) return fail(res, 'INVALID_SCOPE', '可报名范围无效', 400);
@@ -1131,62 +1123,42 @@ async function saveCourse(res, body, id, user, ip) {
   }
 
   const existing = id ? getCourse(id) : null;
-  const dates = {};
-  for (const key of ['enroll_start_at', 'enroll_end_at', 'course_start_date', 'course_end_date']) {
+  const dates = { course_start_date: null, course_end_date: null };
+  for (const key of ['enroll_start_at', 'enroll_end_at']) {
     const value = body[key] === undefined ? existing?.[key] : body[key];
     if (value && !Number.isFinite(new Date(value).getTime())) return fail(res, 'INVALID_TIME', '请填写有效日期和时间', 400);
     dates[key] = value ? (key.startsWith('enroll_') ? new Date(value).toISOString() : value) : null;
   }
   if (dates.enroll_start_at && dates.enroll_end_at && new Date(dates.enroll_start_at) >= new Date(dates.enroll_end_at)) return fail(res, 'INVALID_TIME', '报名结束时间必须晚于开始时间', 400);
-  if (dates.course_start_date && dates.course_end_date && dates.course_start_date > dates.course_end_date) return fail(res, 'INVALID_TIME', '课程结束日期不能早于开始日期', 400);
   // 容量不可低于当前有效报名
   if (existing && capacity < existing.active_count) {
     return fail(res, 'CAPACITY_BELOW_ENROLLED', `容量(${capacity})低于当前已报名人数(${existing.active_count})`, 400);
   }
-  const conflicts = {
-    teacher: scheduleConflicts.teacherConflicts(db, id || -1, teachers, schedules),
-    venue: venueConflicts(id || -1, schedules),
-    student: existing ? studentConflicts(id, schedules) : { count: 0, students: [], reasons: [] },
-  };
-  if (conflicts.teacher.length || conflicts.venue.length || conflicts.student.count) {
-    return fail(res, 'HARD_CONFLICT', '保存失败：存在硬冲突', 409, conflicts);
-  }
-
   if (existing) {
     const before = { name: existing.name, capacity: existing.capacity, status: existing.status };
     existing.name = name; existing.category_id = categoryId; existing.capacity = capacity;
-    existing.description = body.description || ''; existing.status = status;
+    existing.description = body.description || ''; existing.status = status; existing.teacher_names = teacherText.trim();
     existing.allowed_scope_json = JSON.stringify(allowedScope);
     db.teaching_group_courses = db.teaching_group_courses.filter((row) => row.course_id !== existing.id);
     Object.assign(existing, dates);
     existing.version += 1; existing.updated_by = user.id; existing.updated_at = new Date().toISOString();
-    // 重建老师与排课
+    // 保存后解除旧教师、排课关联；姓名已迁移到课程自身。
     db.course_staff = db.course_staff.filter((x) => x.course_id !== existing.id);
-    teachers.forEach((tid) => db.course_staff.push({ course_id: existing.id, staff_id: tid, role: 'TEACHER' }));
     db.course_schedules = db.course_schedules.filter((x) => x.course_id !== existing.id);
-    schedules.forEach((s) => db.course_schedules.push({ id: nextId('course_schedules'), course_id: existing.id, time_slot_id: s.time_slot_id, venue_id: s.venue_id }));
     save();
     audit(user.id, 'UPDATE_COURSE', 'course', existing.id, before, { name, capacity, status }, ip);
     return { course: courseToView(existing) };
   }
   const cid = nextId('courses');
-  db.courses.push({ id: cid, name, category_id: categoryId, description: body.description || '', cover_url: '', capacity, active_count: 0, status, enroll_start_at: null, enroll_end_at: null, course_start_date: null, course_end_date: null, allowed_scope_json: JSON.stringify(allowedScope), version: 1, created_by: user.id, updated_by: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-  teachers.forEach((tid) => db.course_staff.push({ course_id: cid, staff_id: tid, role: 'TEACHER' }));
+  db.courses.push({ id: cid, name, teacher_names: teacherText.trim(), category_id: categoryId, description: body.description || '', cover_url: '', capacity, active_count: 0, status, enroll_start_at: null, enroll_end_at: null, course_start_date: null, course_end_date: null, allowed_scope_json: JSON.stringify(allowedScope), version: 1, created_by: user.id, updated_by: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   Object.assign(getCourse(cid), dates);
-  schedules.forEach((s) => db.course_schedules.push({ id: nextId('course_schedules'), course_id: cid, time_slot_id: s.time_slot_id, venue_id: s.venue_id }));
   save();
   audit(user.id, 'CREATE_COURSE', 'course', cid, null, { name }, ip);
   return { course: courseToView(getCourse(cid)) };
 }
 
-function previewConflicts(id, body) {
-  const teachers = Array.isArray(body.teachers) ? body.teachers.map(Number).filter(Boolean) : [];
-  const schedules = Array.isArray(body.schedules) ? body.schedules.filter((s) => s.time_slot_id && s.venue_id) : [];
-  return {
-    teacher: scheduleConflicts.teacherConflicts(db, id || -1, teachers, schedules),
-    venue: venueConflicts(id || -1, schedules),
-    student: id ? studentConflicts(id, schedules) : { count: 0, students: [], reasons: [] },
-  };
+function previewConflicts() {
+  return { teacher: [], venue: [], student: { count: 0, students: [], reasons: [] } };
 }
 
 // 存储就绪后再监听端口，确保请求到达时内存数据已加载

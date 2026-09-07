@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
-const { mkdtemp, writeFile, readFile, rm } = require('node:fs/promises');
+const { mkdtemp, writeFile, readFile, rm, rename, mkdir } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -12,7 +12,8 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
   const directory = await mkdtemp(path.join(os.tmpdir(), 'enrollment-regression-'));
   const file = path.join(directory, 'data.json');
   const secret = crypto.randomBytes(32).toString('hex');
-  await writeFile(file, JSON.stringify(enrollmentFixture()));
+  const initial = enrollmentFixture();
+  await writeFile(file, JSON.stringify(initial));
   let child;
   let base;
   async function start() {
@@ -28,10 +29,13 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
   async function stop() { if (child && child.exitCode === null) { const exited = new Promise((resolve) => child.once('exit', resolve)); child.kill('SIGTERM'); await exited; } }
   t.after(async () => { await stop(); await rm(directory, { recursive: true, force: true }); });
   await start();
-  const token = (id) => { const payload = Buffer.from(JSON.stringify({ uid: id })).toString('base64url'); return `${payload}.${crypto.createHmac('sha256', secret).update(payload).digest('base64url')}`; };
+  const sessionTokens = new Map();
+  const token = (id) => { if (sessionTokens.has(id)) return sessionTokens.get(id); const credential = crypto.createHash('sha256').update(initial.db.users.find((u) => u.id === id)?.password_hash || '').digest('hex'); const payload = Buffer.from(JSON.stringify({ uid: id, credential })).toString('base64url'); return `${payload}.${crypto.createHmac('sha256', secret).update(payload).digest('base64url')}`; };
   const request = async (url, id = 1000, method = 'GET', body) => {
     const response = await fetch(base + url, { method, headers: { Authorization: `Bearer ${token(id)}`, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
-    return { status: response.status, ...await response.json() };
+    const result = { status: response.status, ...await response.json() };
+    if (result.data?.token) { const payload = JSON.parse(Buffer.from(result.data.token.split('.')[0], 'base64url')); sessionTokens.set(payload.uid, result.data.token); }
+    return result;
   };
   const enroll = (student, course, key = `student-${student}-course-${course}`) => request(`/api/courses/${course}/enroll`, student, 'POST', { idempotency_key: key });
   const setConfig = (key, value) => request('/api/admin/configs', 1000, 'PUT', { items: [{ key, value }] });
@@ -56,11 +60,10 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
     assert.equal(results.filter((r) => r.status === 200).length, 1);
     assert.equal(results.filter((r) => r.code === 'STUDENT_LIMIT_REACHED').length, 1);
   });
-  await t.test('同一学生跨课程并发，时间冲突只允许一门', async () => {
+  await t.test('统一上课不再检查时间冲突，仍遵守个人选课上限', async () => {
     assert.equal((await setConfig('student.max_active_courses', '2')).status, 200);
     const results = await Promise.all([enroll(62, 2), enroll(62, 4)]);
-    assert.equal(results.filter((r) => r.status === 200).length, 1);
-    assert.equal(results.filter((r) => r.code === 'STUDENT_TIME_CONFLICT').length, 1);
+    assert.equal(results.filter((r) => r.status === 200).length, 2);
   });
   await t.test('教学组、开放时间、截止时间都在服务端校验', async () => {
     assert.equal((await enroll(64, 2)).code, 'STUDENT_SCOPE_MISMATCH');
@@ -174,5 +177,75 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
       assert.equal(course.active_count, stored.enrollments.filter((r) => r.course_id === course.id && r.status === 'ENROLLED').length);
       assert.ok(course.active_count <= course.capacity);
     }
+  });
+  await t.test('教师只填姓名，不配置排课或教师账号也能发布报名', async () => {
+    const before = (await request('/api/admin/meta')).data;
+    const result = await request('/api/admin/courses', 1000, 'POST', { name: '统一时间体育课', capacity: 20, category_id: 1, teacher_names: '新任教师、李老师', status: 'DRAFT', allowed_scope: { type: 'all' } });
+    assert.equal(result.status, 200);
+    const id = result.data.course.id;
+    assert.deepEqual(result.data.course.teachers, ['新任教师', '李老师']);
+    assert.deepEqual(result.data.course.schedules, []);
+    assert.equal((await request(`/api/admin/courses/${id}/open`, 1000, 'POST', {})).status, 200);
+    assert.equal((await enroll(63, id, 'free-teacher-course')).status, 200);
+    const roster = (await request('/api/admin/enrollment-roster')).data;
+    assert.equal(roster.enrolled.find((s) => s.student_id === 63).teachers, '新任教师、李老师');
+    assert.deepEqual((await request('/api/admin/meta')).data.staff, before.staff);
+    const blank = await request('/api/admin/courses', 1000, 'POST', { name: '暂不填教师也能报名', capacity: 10, category_id: 1, status: 'OPEN' });
+    assert.equal(blank.status, 200);
+    assert.deepEqual(blank.data.course.teachers, []);
+  });
+  await t.test('删除预览无副作用，学生无权删除，错误确认不执行', async () => {
+    const before = (await request('/api/admin/students')).data.items;
+    assert.equal((await request('/api/admin/students/delete-preview', 1, 'POST', { student_nos: ['0063'] })).status, 403);
+    assert.equal((await request('/api/admin/students/delete-preview', 1000, 'POST', { student_nos: [63] })).status, 400);
+    const preview = (await request('/api/admin/students/delete-preview', 1000, 'POST', { student_nos: ['0063', '0063', '不存在'] })).data;
+    assert.equal(preview.matches.length, 1);
+    assert.equal(preview.duplicate_count, 1);
+    assert.deepEqual(preview.not_found, ['不存在']);
+    assert.deepEqual((await request('/api/admin/students')).data.items, before);
+    const payload = { confirmation_token: preview.confirmation_token, confirm_count: 1 };
+    assert.equal((await request('/api/admin/students/delete-confirm', 1, 'POST', payload)).status, 403);
+    assert.equal((await request('/api/admin/students/delete-confirm', 1000, 'POST', { ...payload, confirmation_token: 'invalid' })).status, 409);
+    assert.equal((await request('/api/admin/students/delete-confirm', 1000, 'POST', { ...payload, confirm_count: 2 })).status, 409);
+    const expiredBody = JSON.parse(Buffer.from(preview.confirmation_token.split('.')[0], 'base64url')); expiredBody.expires = 0;
+    const encoded = Buffer.from(JSON.stringify(expiredBody)).toString('base64url');
+    const expired = `${encoded}.${crypto.createHmac('sha256', secret).update(encoded).digest('base64url')}`;
+    assert.equal((await request('/api/admin/students/delete-confirm', 1000, 'POST', { ...payload, confirmation_token: expired })).status, 409);
+    assert.deepEqual((await request('/api/admin/students')).data.items, before);
+  });
+  await t.test('预览后报名变化必须重新确认，删除释放名额、旧登录失效、不影响其他学生', async () => {
+    const path = '/api/admin/students/delete-preview';
+    const first = (await request(path, 1000, 'POST', { student_nos: ['0063'] })).data;
+    const courseId = (await request('/api/me/enrollments', 63)).data.items[0].id;
+    assert.equal((await request(`/api/courses/${courseId}/enrollment`, 63, 'DELETE', {})).status, 200);
+    assert.equal((await request('/api/admin/students/delete-confirm', 1000, 'POST', { confirmation_token: first.confirmation_token, confirm_count: 1 })).code, 'PREVIEW_CHANGED');
+    assert.equal((await enroll(63, courseId, 'reenroll-before-delete')).status, 200);
+    const before = (await request('/api/admin/students')).data.items;
+    const preview = (await request(path, 1000, 'POST', { student_nos: ['0063'] })).data;
+    // 故障注入仅修改隔离临时目录，让原子替换失败，确认内存不留下半删除状态。
+    await rename(file, `${file}.backup`); await mkdir(file);
+    try {
+      assert.equal((await request('/api/admin/students/delete-confirm', 1000, 'POST', { confirmation_token: preview.confirmation_token, confirm_count: 1 })).status, 500);
+      assert.deepEqual((await request('/api/admin/students')).data.items, before);
+      assert.equal((await request('/api/me/enrollments', 63)).data.items.length, 1);
+    } finally { await rm(file, { recursive: true }); await rename(`${file}.backup`, file); }
+    const result = await request('/api/admin/students/delete-confirm', 1000, 'POST', { confirmation_token: preview.confirmation_token, confirm_count: 1 });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.data, { deleted_count: 1, released_count: 1 });
+    assert.equal((await request('/api/me/enrollments', 63)).status, 401);
+    assert.equal((await request('/api/auth/login', 63, 'POST', { username: 'test63', password: 'TestOnly123!' })).status, 401);
+    assert.deepEqual((await request('/api/admin/students')).data.items, before.filter((s) => s.id !== 63));
+    assert.equal((await request('/api/admin/courses')).data.items.find((c) => c.id === courseId).active_count, 0);
+    const roster = (await request('/api/admin/enrollment-roster')).data;
+    assert.ok([...roster.enrolled, ...roster.unenrolled].every((s) => s.student_id !== 63));
+    assert.equal((await request('/api/admin/students/delete-confirm', 1000, 'POST', { confirmation_token: preview.confirmation_token, confirm_count: 1 })).status, 409);
+    await stop(); await start();
+    const stored = JSON.parse(await readFile(file, 'utf8')).db;
+    assert.ok(!stored.users.some((u) => u.id === 63));
+    assert.ok(!stored.students.some((s) => s.id === 63));
+    assert.ok(!stored.enrollments.some((s) => s.student_id === 63));
+    assert.ok(stored.audit_logs.some((log) => log.action === 'DELETE_STUDENTS'));
+    assert.equal((await request('/api/me/profile', 63)).status, 401);
+    assert.deepEqual((await request('/api/admin/courses')).data.items.find((c) => c.id === courseId).teachers, ['新任教师', '李老师']);
   });
 });

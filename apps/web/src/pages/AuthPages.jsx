@@ -10,7 +10,7 @@ export function LoginPage({ api, sessionStore, onSession }) {
 
   async function submit(event) {
     event.preventDefault();
-    if (!username.trim() || !password) return setError('请输入学号或教职工账号和密码');
+    if (!username.trim() || !password) return setError('请输入学号或管理账号和密码');
     setLoading(true); setError('');
     try {
       const next = api ? await api.login(username.trim(), password) : null;
@@ -51,8 +51,8 @@ export function ChangePasswordPage({ api, session, sessionStore, onSession, toas
     if (form.new_password !== form.confirm_password) return setError('两次输入的新密码不一致');
     setLoading(true);
     try {
-      await api.changePassword(form);
-      const next = { ...session, must_change_password: false };
+      const result = await api.changePassword(form);
+      const next = { ...session, token: result.token, must_change_password: false };
       sessionStore.set(next); onSession(next); toast('密码已修改'); navigate(routeForSession(next), { replace: true });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }

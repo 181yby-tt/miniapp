@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { createApiClient, createSessionStore, routeForSession, requiresStudentPasswordChange } from '@kexu/client-core';
 import AppShell from './components/AppShell.jsx';
 import { LoginPage, ChangePasswordPage } from './pages/AuthPages.jsx';
-import { CoursesPage, CourseDetailPage, EnrollmentsPage, ProfilePage, SchedulePage } from './pages/StudentPages.jsx';
-import { AdminAccountsPage, AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSchedulePage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
+import { CoursesPage, CourseDetailPage, EnrollmentsPage, ProfilePage } from './pages/StudentPages.jsx';
+import { AdminAccountsPage, AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSettingsPage } from './pages/AdminPages.jsx';
+import AdminStudentsPage from './pages/AdminStudentsPage.jsx';
 import AdminEnrollmentGroupsPage from './pages/AdminEnrollmentGroupsPage.jsx';
 import { navigate, usePathname } from './runtime/browser.js';
 
@@ -60,7 +61,7 @@ export default function App() {
   let page;
   if (isAdmin) {
     if (pathname === '/admin/courses') page = <AdminCoursesPage api={api} toast={toast} />;
-    else if (pathname === '/admin/schedule') page = <AdminSchedulePage api={api} toast={toast} />;
+    else if (pathname === '/admin/schedule') page = <AdminCoursesPage api={api} toast={toast} />;
     else if (pathname === '/admin/students') page = <AdminStudentsPage api={api} toast={toast} />;
     else if (pathname === '/admin/resources') page = <AdminResourcesPage api={api} toast={toast} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
@@ -71,7 +72,7 @@ export default function App() {
   } else {
     if (pathname === '/enrollments') page = <EnrollmentsPage api={api} toast={toast} />;
     else if (/^\/courses\/\d+$/.test(pathname)) page = <CourseDetailPage api={api} courseId={Number(pathname.split('/')[2])} toast={toast} />;
-    else if (pathname === '/schedule') page = <SchedulePage api={api} />;
+    else if (pathname === '/schedule') page = <EnrollmentsPage api={api} toast={toast} />;
     else if (pathname === '/profile') page = <ProfilePage api={api} profile={profile} setProfile={setProfile} onLogout={logout} />;
     else page = <CoursesPage api={api} toast={toast} />;
   }

@@ -30,10 +30,6 @@ function enrollmentPolicy(db, student, course, { now = Date.now(), staff = false
   if (active.length >= Number(config('student.max_active_courses', '2'))) return deny('STUDENT_LIMIT_REACHED', `每名学生最多报名 ${config('student.max_active_courses', '2')} 门课程`);
   const categoryLimit = Number(config('student.max_courses_per_category', '0'));
   if (categoryLimit > 0 && active.filter((row) => db.courses.find((item) => item.id === row.course_id)?.category_id === course.category_id).length >= categoryLimit) return deny('STUDENT_LIMIT_REACHED', `该分类最多报名 ${categoryLimit} 门课程`);
-  const slots = (courseId) => db.course_schedules.filter((row) => row.course_id === courseId).map((row) => db.time_slots.find((slot) => slot.id === row.time_slot_id)).filter(Boolean);
-  const requestedSlots = slots(course.id);
-  const clash = active.find((row) => slots(row.course_id).some((slot) => requestedSlots.some((target) => slot.weekday === target.weekday && slot.period === target.period)));
-  if (clash) return deny('STUDENT_TIME_CONFLICT', `与“${db.courses.find((row) => row.id === clash.course_id)?.name || '已选课程'}”上课时间冲突`);
   if (Number(course.active_count) >= Number(course.capacity)) return deny('COURSE_FULL', '课程名额已满');
   return { eligible: true };
 }

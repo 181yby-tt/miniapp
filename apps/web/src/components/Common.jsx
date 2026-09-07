@@ -43,7 +43,7 @@ export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = fals
           <h3>{course.name}</h3>
           {onEnroll ? <button title={course.eligibility?.reason || ''} className={`small-action ${course.enrolled ? 'success' : ''}`} disabled={disabled || pending} onClick={(event) => { event.stopPropagation(); onEnroll(course.id); }}>{pending ? '报名中…' : course.enrolled ? '已报名' : course.remaining <= 0 ? '已满' : disabled ? '暂不可报' : '报名'}</button> : null}
         </div>
-        <div className="course-meta"><span>{course.teacherText}</span><span>{course.timeText}</span><span>{course.venueText}</span></div>
+        <div className="course-meta"><span>{course.teacherText}</span><span>{course.timeText}</span></div>
         {!compact && !course.enrolled && course.eligibility?.reason ? <p className="helper-text">{course.eligibility.reason}</p> : null}
         {!compact && course.description ? <p className="course-description">{course.description}</p> : null}
         <div className="seat-row"><div className="seat-track"><i style={{ width: `${course.fillPercent}%` }} /></div><span>余 <b className={course.remaining <= 3 ? 'low' : ''}>{course.remaining}</b> / {course.capacity}</span></div>

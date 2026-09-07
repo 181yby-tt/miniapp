@@ -7,8 +7,8 @@ const localInput = (value) => {
 };
 const EMPTY_FORM = {
   name: '', category_id: '', capacity: 30, status: 'DRAFT', description: '',
-  enroll_start_at: '', enroll_end_at: '', course_start_date: '', course_end_date: '',
-  teachers: [], schedules: [], allowed_scope: { type: 'all' },
+  enroll_start_at: '', enroll_end_at: '',
+  teacher_names: '', allowed_scope: { type: 'all' },
 };
 
 export default function CourseEditor({ api, course, meta, onClose, onSaved, toast }) {
@@ -19,20 +19,14 @@ export default function CourseEditor({ api, course, meta, onClose, onSaved, toas
     status: course.status,
     description: course.description || '',
     enroll_start_at: localInput(course.enroll_start_at), enroll_end_at: localInput(course.enroll_end_at),
-    course_start_date: course.course_start_date || '', course_end_date: course.course_end_date || '',
-    teachers: course.teacher_ids || [],
-    schedules: (course.schedules || []).map((item) => ({ time_slot_id: item.time_slot_id, venue_id: item.venue_id })),
+    teacher_names: course.teacher_names ?? course.teachers?.join('、') ?? '',
     allowed_scope: course.allowed_scope || { type: 'all' },
   } : { ...EMPTY_FORM, category_id: meta.categories[0]?.id || '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [conflicts, setConflicts] = useState(null);
   const scopeOptions = useMemo(() => form.allowed_scope.type === 'grades' ? meta.grades : form.allowed_scope.type === 'classes' ? meta.classes : form.allowed_scope.type === 'groups' ? (meta.teaching_groups || []) : [], [form.allowed_scope.type, meta]);
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
-  const toggleTeacher = (id) => setForm((current) => ({ ...current, teachers: current.teachers.includes(id) ? current.teachers.filter((value) => value !== id) : [...current.teachers, id] }));
-  const changeSchedule = (index, key, value) => setForm((current) => ({ ...current, schedules: current.schedules.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: key === 'venue_id' ? Number(value) : value } : item) }));
-  const removeSchedule = (index) => setForm((current) => ({ ...current, schedules: current.schedules.filter((_, itemIndex) => itemIndex !== index) }));
   const setScopeType = (type) => setForm((current) => ({ ...current, allowed_scope: { type, [type]: [] } }));
   const toggleScope = (id) => setForm((current) => {
     const key = current.allowed_scope.type;
@@ -41,27 +35,25 @@ export default function CourseEditor({ api, course, meta, onClose, onSaved, toas
   });
 
   async function submit(event) {
-    event.preventDefault(); setError(''); setConflicts(null);
+    event.preventDefault(); setError('');
     if (!form.name.trim()) return setError('请填写课程名称');
     if (!Number.isInteger(Number(form.capacity)) || Number(form.capacity) < 1) return setError('课程容量必须是正整数');
-    if (form.schedules.some((item) => !item.time_slot_id || !item.venue_id)) return setError('排课中的时间段和场地都要选择');
     setSaving(true);
     try {
       const payload = { ...form, enroll_start_at: form.enroll_start_at ? new Date(form.enroll_start_at).toISOString() : null, enroll_end_at: form.enroll_end_at ? new Date(form.enroll_end_at).toISOString() : null, category_id: Number(form.category_id), capacity: Number(form.capacity) };
       if (course) await api.updateAdminCourse(course.id, payload);
       else await api.createAdminCourse(payload);
-      toast(course ? '课程和排课已更新' : '课程已创建');
+      toast(course ? '课程已更新' : '课程已创建');
       onSaved();
     } catch (err) {
-      setError(err.code === 'HARD_CONFLICT' ? '无法保存，请先处理下面的排课冲突。' : err.message);
-      if (err.code === 'HARD_CONFLICT') setConflicts(err.details || {});
+      setError(err.message);
     }
     finally { setSaving(false); }
   }
 
   return <div className="editor-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <form className="course-editor" onSubmit={submit}>
-      <header><div><p className="eyebrow ink">课程资料与排课</p><h2>{course ? '编辑课程' : '新建课程'}</h2></div><button type="button" className="close-button" onClick={onClose}>关闭</button></header>
+      <header><div><p className="eyebrow ink">课程资料</p><h2>{course ? '编辑课程' : '新建课程'}</h2></div><button type="button" className="close-button" onClick={onClose}>关闭</button></header>
       <div className="form-grid">
         <label className="span-two"><span>课程名称</span><input value={form.name} onChange={update('name')} placeholder="例如：篮球基础" /></label>
         <label><span>课程分类</span><select value={form.category_id} onChange={update('category_id')}>{meta.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -70,18 +62,13 @@ export default function CourseEditor({ api, course, meta, onClose, onSaved, toas
         <label><span>报名开始时间（选填）</span><input type="datetime-local" value={form.enroll_start_at} onChange={update('enroll_start_at')} /></label>
         <label><span>报名结束时间（选填）</span><input type="datetime-local" value={form.enroll_end_at} onChange={update('enroll_end_at')} /></label>
         <p className="helper-text span-two">不填时间时，由课程的开放、暂停按钮控制。填写后，到达截止时间将自动停止学生报名和退课。</p>
-        <label><span>开课日期（选填）</span><input type="date" value={form.course_start_date} onChange={update('course_start_date')} /></label>
-        <label><span>结课日期（选填）</span><input type="date" value={form.course_end_date} onChange={update('course_end_date')} /></label>
+        <label className="span-two"><span>任课教师（选填）</span><input maxLength="500" value={form.teacher_names} onChange={update('teacher_names')} placeholder="直接填写姓名，多位教师用顿号分隔" /></label>
         <label className="span-two"><span>课程介绍</span><textarea rows="3" value={form.description} onChange={update('description')} placeholder="填写课程内容、适合对象和注意事项" /></label>
       </div>
 
-      <section className="editor-section"><div className="section-heading"><div><strong>任课教师</strong><span>可以选择多位教师</span></div></div><div className="option-grid">{meta.staff.map((item) => <label className="check-card" key={item.id}><input type="checkbox" checked={form.teachers.includes(item.id)} onChange={() => toggleTeacher(item.id)} /><span>{item.name}<small>{item.staff_no}</small></span></label>)}</div></section>
-
-      <section className="editor-section"><div className="section-heading"><div><strong>上课时间与场地</strong><span>保存时会检查教师、场地和已报名学生的课表冲突；整馆与分区也不能同时占用</span></div><button type="button" onClick={() => setForm((current) => ({ ...current, schedules: [...current.schedules, { time_slot_id: '', venue_id: '' }] }))}>继续添加上课时间</button></div>{form.schedules.length ? <div className="schedule-editor-list">{form.schedules.map((item, index) => <div key={index}><b>第 {index + 1} 节安排</b><select aria-label={`第 ${index + 1} 节上课时间`} value={item.time_slot_id} onChange={(event) => changeSchedule(index, 'time_slot_id', event.target.value)}><option value="">选择上课时间</option>{meta.time_slots.map((slot) => <option key={slot.id} value={slot.id}>{slot.name}</option>)}</select><select aria-label={`第 ${index + 1} 节上课场地`} value={item.venue_id} onChange={(event) => changeSchedule(index, 'venue_id', event.target.value)}><option value="">选择上课场地</option>{meta.venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}</select><button type="button" aria-label={`删除第 ${index + 1} 节安排`} onClick={() => removeSchedule(index)}>删除这节安排</button></div>)}</div> : <p className="helper-text">还没有排课。项目会先保存为“尚未启用”，之后可以再安排教师、时间和场地。</p>}</section>
-
       <section className="editor-section"><div className="section-heading"><div><strong>适用学生范围</strong><span>选择可报名的学生；教学组是预先配置的班级集合。</span></div></div><div className="segmented scope-tabs"><button type="button" className={form.allowed_scope.type === 'all' ? 'active' : ''} onClick={() => setScopeType('all')}>全体学生</button><button type="button" className={form.allowed_scope.type === 'grades' ? 'active' : ''} onClick={() => setScopeType('grades')}>指定年级</button><button type="button" className={form.allowed_scope.type === 'classes' ? 'active' : ''} onClick={() => setScopeType('classes')}>指定班级</button><button type="button" className={form.allowed_scope.type === 'groups' ? 'active' : ''} onClick={() => setScopeType('groups')}>指定教学组</button></div>{form.allowed_scope.type !== 'all' ? <div className="option-grid compact">{scopeOptions.map((item) => { const key = form.allowed_scope.type; return <label className="check-card" key={item.id}><input type="checkbox" checked={(form.allowed_scope[key] || []).includes(item.id)} onChange={() => toggleScope(item.id)} /><span>{item.name}</span></label>; })}</div> : null}</section>
-      {error ? <div className="form-error course-save-error"><strong>{error}</strong>{conflicts ? <ul>{[...(conflicts.teacher || []), ...(conflicts.venue || [])].map((item, index) => <li key={`${item.course_id}-${index}`}>{item.reason}</li>)}{(conflicts.student?.reasons || []).map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}</div> : null}
-      <footer><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button editor-save" disabled={saving}>{saving ? '正在保存…' : '保存课程和排课'}</button></footer>
+      {error ? <div className="form-error course-save-error">{error}</div> : null}
+      <footer><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button editor-save" disabled={saving}>{saving ? '正在保存…' : '保存课程'}</button></footer>
     </form>
   </div>;
 }

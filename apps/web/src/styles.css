@@ -320,3 +320,19 @@ button, input, select, textarea { font: inherit; }
   .compact-metrics { grid-template-columns: repeat(2,1fr); }.compact-metrics .metric:last-child { display: none; }
   .course-card { align-items: flex-start; }.course-artwork { width: 58px; min-height: 86px; padding: 8px; }.course-artwork > span { max-width: 44px; font-size: 10px; }.course-meta { display: grid; }.page-action { display: none; }
 }
+/* 名单删除：手机不使用宽表格，核对与确认分开。 */
+.student-delete-body { display: grid; gap: 14px; padding: 20px; min-width: 0; }
+.student-delete-body p { margin: 0; line-height: 1.7; }
+.student-delete-body > small, .student-delete-unmatched { overflow-wrap: anywhere; }
+.student-delete-body .upload-button { justify-self: start; }
+.student-delete-matches { max-height: 320px; overflow: auto; border-block: 1px solid #e5e7eb; }
+.student-delete-matches > div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eee; }
+.student-delete-matches strong, .student-delete-matches span { min-width: 0; overflow-wrap: anywhere; }
+.student-delete-matches span { text-align: right; }
+.student-delete-matches small { display: block; color: #6b7280; font-weight: 400; margin-top: 4px; }
+.student-delete-warning { color: #a12b27; }
+.student-delete-confirm { display: grid; gap: 8px; max-width: 320px; }
+.student-delete-confirm input { width: 100%; min-height: 44px; }
+.student-delete-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.student-delete-actions button { min-height: 44px; }
+@media (max-width: 640px) { .student-delete-body { padding: 16px; } .student-delete-actions button { flex: 1; } }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Empty, ErrorState, Loading, PageHeader, StatusPill } from '../components/Common.jsx';
 import StudentImportPanel from '../components/admin/StudentImportPanel.jsx';
+import StudentDeletePanel from '../components/admin/StudentDeletePanel.jsx';
 
 function ResetPasswordDialog({ student, pending, onCancel, onConfirm }) {
   const ref = useRef(null);
@@ -50,6 +51,7 @@ export default function AdminStudentsPage({ api, toast }) {
   return <div className="student-directory">
     <PageHeader eyebrow="教务管理" title="学生管理" />
     <StudentImportPanel api={api} toast={toast} onImported={load} />
+    <StudentDeletePanel api={api} toast={toast} onDeleted={load} />
     <section className="student-list-panel" aria-label="学生名单">
       <header className="student-list-heading"><h2>学生名单 <span>{state.loading ? '—' : source.length}</span></h2><button type="button" onClick={load}>刷新名单</button></header>
       <div className="student-filters">

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { buildSchedule, decorateCourse, makeIdempotencyKey, WEEK_DAYS } from '@kexu/client-core';
+import { useEffect, useState } from 'react';
+import { decorateCourse, makeIdempotencyKey } from '@kexu/client-core';
 import { CourseArtwork, CourseCard, Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
 import { formatDate, navigate } from '../runtime/browser.js';
 
@@ -71,7 +71,7 @@ export function CourseDetailPage({ api, courseId, toast }) {
   return <>
     <button className="back-button" onClick={() => navigate('/courses')}>← 返回课程大厅</button>
     <section className={`detail-hero tone-surface-${course.tone}`}><CourseArtwork course={course} large /><div><span>学生端 · {course.category}</span><h1>{course.name}</h1><StatusPill status={course.status} /></div></section>
-    <div className="detail-grid"><section className="paper-card detail-facts"><h2>课程信息</h2><dl><div><dt>负责老师</dt><dd>{course.teacherText}</dd></div><div><dt>上课时间</dt><dd>{course.timeText}</dd></div><div><dt>上课场地</dt><dd>{course.venueText}</dd></div><div><dt>课程容量</dt><dd>{course.capacity} 人</dd></div><div><dt>剩余名额</dt><dd className={course.remaining ? 'good' : 'bad'}>{course.remaining} 人</dd></div></dl></section><section className="paper-card detail-description"><h2>课程简介</h2>{course.enroll_start_at ? <p>开始报名：{formatDate(course.enroll_start_at)}</p> : null}{course.enroll_end_at ? <p>截止报名：{formatDate(course.enroll_end_at)}</p> : null}<p>{course.description || '暂无课程简介'}</p>{eligibility?.eligible === false ? <div className="inline-alert">{eligibility.reason}</div> : null}</section></div>
+    <div className="detail-grid"><section className="paper-card detail-facts"><h2>课程信息</h2><dl><div><dt>负责老师</dt><dd>{course.teacherText}</dd></div><div><dt>上课时间</dt><dd>{course.timeText}</dd></div><div><dt>课程容量</dt><dd>{course.capacity} 人</dd></div><div><dt>剩余名额</dt><dd className={course.remaining ? 'good' : 'bad'}>{course.remaining} 人</dd></div></dl></section><section className="paper-card detail-description"><h2>课程简介</h2>{course.enroll_start_at ? <p>开始报名：{formatDate(course.enroll_start_at)}</p> : null}{course.enroll_end_at ? <p>截止报名：{formatDate(course.enroll_end_at)}</p> : null}<p>{course.description || '暂无课程简介'}</p>{eligibility?.eligible === false ? <div className="inline-alert">{eligibility.reason}</div> : null}</section></div>
     <div className="detail-actions">{course.enrolled ? <button className="danger-button" disabled={pending} onClick={withdraw}>{pending ? '处理中…' : '退课'}</button> : <button className="primary-button" disabled={!canEnroll || pending} onClick={enroll}>{pending ? '报名中…' : canEnroll ? `立即报名（余 ${course.remaining}）` : eligibility?.reason || (course.remaining <= 0 ? '已满员' : '暂不可报名')}</button>}</div>
   </>;
 }
@@ -82,13 +82,6 @@ export function EnrollmentsPage({ api, toast }) {
   async function withdraw(id) { if (!window.confirm('确定退课吗？')) return; try { await api.withdraw(id); toast('已退课'); setRefreshKey((key) => key + 1); } catch (error) { toast(error.message, 'error'); } }
   const items = state.data?.items || [];
   return <><PageHeader eyebrow="本学期" title="我的课程" /><section className="metric-grid compact-metrics"><Metric value={items.length} suffix={` / ${state.data?.max_active || 2}`} label="已选课程" /><Metric value={Math.max(0, (state.data?.max_active || 0) - items.length)} label="可再选" tone="accent" /></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={() => setRefreshKey((key) => key + 1)} /> : items.length ? <div className="course-grid">{items.map((course) => <div className="enrollment-wrap" key={course.id}><CourseCard compact course={course} onOpen={(id) => navigate(`/courses/${id}`)} /><button className="danger-link" onClick={() => withdraw(course.id)}>退课</button></div>)}</div> : <Empty title="暂无已选课程" />}{state.data?.history?.length ? <section className="history-section"><h2>历史记录</h2>{state.data.history.map((item, index) => <div className="history-row" key={`${item.course_id}-${index}`}><strong>{item.name}</strong><StatusPill status={item.status} /><span>{formatDate(item.cancelled_at)}</span></div>)}</section> : null}</>;
-}
-
-export function SchedulePage({ api }) {
-  const [view, setView] = useState('grid');
-  const [state, reload] = useLoad(() => api.getSchedule(), []);
-  const schedule = useMemo(() => buildSchedule(state.data?.items || []), [state.data]);
-  return <><PageHeader eyebrow="本周安排" title="课表" description={`已选 ${state.data?.items?.length || 0} 门课程`} action={<div className="segmented"><button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')}>课表</button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>列表</button></div>} />{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : !state.data.items.length ? <Empty title="暂无课表" /> : view === 'grid' ? <div className="schedule-scroll"><div className="schedule-grid" style={{ '--rows': schedule.periods.length }}><div className="schedule-head corner">节次</div>{WEEK_DAYS.map((day) => <div className="schedule-head" key={day}>{day}</div>)}{schedule.rows.map((row, rowIndex) => [<div className="period-cell" key={`p-${rowIndex}`}>第 {schedule.periods[rowIndex]} 节</div>, ...row.map((cell, colIndex) => <button className={`schedule-cell ${cell ? `tone-${cell.tone}` : ''}`} key={`${rowIndex}-${colIndex}`} disabled={!cell} onClick={() => cell && navigate(`/courses/${cell.course_id}`)}>{cell ? <><strong>{cell.name}</strong><span>{cell.venue}</span></> : null}</button>)])}</div></div> : <div className="schedule-list">{schedule.list.map((item, index) => <button key={`${item.course_id}-${index}`} onClick={() => navigate(`/courses/${item.course_id}`)}><span className={`list-day tone-${item.tone}`}>{item.weekdayText}<small>第 {item.period} 节</small></span><span><strong>{item.name}</strong><small>{item.teacherText} · {item.venue}</small></span></button>)}</div>}</>;
 }
 
 export function ProfilePage({ api, profile, setProfile, onLogout }) {

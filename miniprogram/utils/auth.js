@@ -40,6 +40,7 @@ function bindCurrent(code) {
 
 function changePassword(payload) {
   return request({ url: '/api/auth/change-password', method: 'POST', data: payload }).then((data) => {
+    if (data.token) wx.setStorageSync('token', data.token);
     wx.removeStorageSync('must_change_password');
     return data;
   });

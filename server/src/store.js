@@ -425,7 +425,13 @@ function loadOrSeedFile() {
 }
 
 function saveFile() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify({ db, seq }, null, 2));
+  const pending = `${DATA_FILE}.${process.pid}.pending`;
+  try {
+    fs.writeFileSync(pending, JSON.stringify({ db, seq }, null, 2));
+    fs.renameSync(pending, DATA_FILE);
+  } finally {
+    if (fs.existsSync(pending)) fs.unlinkSync(pending);
+  }
 }
 
 /* ----------------------------- MySQL 模式 ----------------------------- */
@@ -450,6 +456,8 @@ async function loadFromMysql() {
   }
   const schema = fs.readFileSync(SCHEMA_FILE, 'utf8');
   await p.query(schema);
+  const [teacherColumns] = await p.query("SELECT 1 FROM `information_schema`.`columns` WHERE `table_schema`=? AND `table_name`='courses' AND `column_name`='teacher_names' LIMIT 1", [DB_CFG.database]);
+  if (!teacherColumns.length) await p.query('ALTER TABLE `courses` ADD COLUMN `teacher_names` TEXT NULL');
 
   // 2) 是否已初始化
   const [cnt] = await p.query('SELECT COUNT(*) AS n FROM `users`');
@@ -488,7 +496,7 @@ async function flush(conn) {
       await conn.query(`DELETE FROM \`${col}\``);
       const rows = db[col] || [];
       if (rows.length) {
-        const cols = Object.keys(rows[0]);
+        const cols = [...new Set(rows.flatMap((row) => Object.keys(row)))];
         const sql = `INSERT INTO \`${col}\` (${cols.map((c) => '`' + c + '`').join(',')}) VALUES ?`;
         const values = rows.map((r) => cols.map((c) => writeVal(col, c, r[c])));
         await conn.query(sql, [values]);

@@ -96,6 +96,8 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
     setCourseStatus: (id, action) => request(`/api/admin/courses/${id}/${action}`, { method: 'POST', body: {} }),
     getAdminStudents: (query = '') => request(`/api/admin/students${query ? `?q=${encodeURIComponent(query)}` : ''}`),
     resetStudentPassword: (id) => request(`/api/admin/students/${id}/reset-password`, { method: 'POST', body: {} }),
+    previewStudentDeletion: (payload) => request('/api/admin/students/delete-preview', { method: 'POST', body: payload }),
+    confirmStudentDeletion: (payload) => request('/api/admin/students/delete-confirm', { method: 'POST', body: payload }),
     importAdminStudents: (payload) => request('/api/admin/students/import', { method: 'POST', body: payload }),
     getAdminEnrollments: ({ query = '', status = 'ENROLLED' } = {}) => {
       const params = new URLSearchParams({ status });
@@ -133,7 +135,7 @@ export function decorateCourse(course = {}) {
     ...course,
     tone: toneForCourse(course.id),
     mark: String(course.name || '课').slice(0, 1),
-    teacherText: (course.teachers || []).join('、') || '待定',
+    teacherText: (course.teachers || []).join('、') || '学校统一安排',
     timeText: schedules.map((item) => item.slot_name).filter(Boolean).join('、') || '待定',
     venueText: schedules.map((item) => item.venue_name).filter(Boolean).join('、') || '待定',
     fillPercent: course.capacity ? Math.min(100, Math.round((course.active_count || 0) / course.capacity * 100)) : 0,

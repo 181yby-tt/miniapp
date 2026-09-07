@@ -37,7 +37,7 @@ function sign(payload) {
 }
 
 function verify(token) {
-  if (!token || !token.includes('.')) return null;
+  if (typeof token !== 'string' || !token.includes('.')) return null;
   const [body, sig] = token.split('.');
   const expected = crypto.createHmac('sha256', TOKEN_SECRET).update(body).digest('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -50,4 +50,5 @@ function verify(token) {
   }
 }
 
-module.exports = { hashPassword, verifyPassword, sign, verify };
+function credentialTag(user) { return crypto.createHash('sha256').update(user.password_hash || '').digest('hex'); }
+module.exports = { hashPassword, verifyPassword, sign, verify, credentialTag };
