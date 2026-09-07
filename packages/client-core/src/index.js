@@ -174,8 +174,12 @@ export function makeIdempotencyKey(prefix = 'web') {
   return `${prefix}-${random}`;
 }
 
+export function requiresStudentPasswordChange(session) {
+  return session?.user_type === 'STUDENT' && Boolean(session.must_change_password);
+}
+
 export function routeForSession(session) {
   if (!session) return '/login';
-  if (session.must_change_password) return '/change-password';
+  if (requiresStudentPasswordChange(session)) return '/change-password';
   return ['STAFF', 'SUPER_ADMIN'].includes(session.user_type) ? '/admin' : '/courses';
 }

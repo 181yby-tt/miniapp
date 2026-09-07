@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { routeForSession } from '@kexu/client-core';
+import { routeForSession, requiresStudentPasswordChange } from '@kexu/client-core';
 import { navigate } from '../runtime/browser.js';
 
 export function LoginPage({ api, sessionStore, onSession }) {
@@ -56,5 +56,5 @@ export function ChangePasswordPage({ api, session, sessionStore, onSession, toas
       sessionStore.set(next); onSession(next); toast('密码已修改'); navigate(routeForSession(next), { replace: true });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }
-  return <main className="password-page"><form className="password-card" onSubmit={submit}><div className="brand-mark dark">密</div><p className="eyebrow ink">账号安全</p><h1>{session.must_change_password ? '设置你的新密码' : '修改密码'}</h1><p>新密码至少 8 位，建议同时包含数字和字母。</p><label><span>原密码</span><input type="password" value={form.old_password} onChange={update('old_password')} autoComplete="current-password" /></label><label><span>新密码</span><input type="password" value={form.new_password} onChange={update('new_password')} autoComplete="new-password" /></label><label><span>确认新密码</span><input type="password" value={form.confirm_password} onChange={update('confirm_password')} autoComplete="new-password" /></label>{error ? <div className="form-error">{error}</div> : null}<button className="primary-button" disabled={loading}>{loading ? '正在保存…' : '保存新密码'}</button>{!session.must_change_password ? <button type="button" className="text-button full" onClick={() => window.history.back()}>返回</button> : null}</form></main>;
+  return <main className="password-page"><form className="password-card" onSubmit={submit}><div className="brand-mark dark">密</div><p className="eyebrow ink">账号安全</p><h1>{requiresStudentPasswordChange(session) ? '设置你的新密码' : '修改密码'}</h1><p>新密码至少 8 位，建议同时包含数字和字母。</p><label><span>原密码</span><input type="password" value={form.old_password} onChange={update('old_password')} autoComplete="current-password" /></label><label><span>新密码</span><input type="password" value={form.new_password} onChange={update('new_password')} autoComplete="new-password" /></label><label><span>确认新密码</span><input type="password" value={form.confirm_password} onChange={update('confirm_password')} autoComplete="new-password" /></label>{error ? <div className="form-error">{error}</div> : null}<button className="primary-button" disabled={loading}>{loading ? '正在保存…' : '保存新密码'}</button>{!requiresStudentPasswordChange(session) ? <button type="button" className="text-button full" onClick={() => window.history.back()}>返回</button> : null}</form></main>;
 }

@@ -155,7 +155,7 @@ export function AdminStudentsPage({ api, toast }) {
 }
 
 export function AdminAccountsPage({ api, toast }) {
-  const [form, setForm] = useState({ username: '', name: '', password: '', role: 'STAFF', require_password_change: true });
+  const [form, setForm] = useState({ username: '', name: '', password: '', role: 'STAFF' });
   const [query, setQuery] = useState('');
   const [role, setRole] = useState('ALL');
   const [status, setStatus] = useState('ALL');
@@ -167,7 +167,7 @@ export function AdminAccountsPage({ api, toast }) {
     setSaving(true);
     try {
       await api.createAdminAccount(form);
-      setForm({ username: '', name: '', password: '', role: 'STAFF', require_password_change: true });
+      setForm({ username: '', name: '', password: '', role: 'STAFF' });
       toast(`${form.role === 'SUPER_ADMIN' ? '超级管理员' : '老师'}账号已创建`);
       reload();
     } catch (error) { toast(error.message, 'error'); }
@@ -181,11 +181,10 @@ export function AdminAccountsPage({ api, toast }) {
       <label><span>姓名</span><input value={form.name} onChange={update('name')} placeholder="例如：张老师" autoComplete="off" /></label>
       <label><span>账号角色</span><select value={form.role} onChange={update('role')}><option value="STAFF">老师</option><option value="SUPER_ADMIN">超级管理员</option></select></label>
       <label><span>初始密码</span><input type="password" value={form.password} onChange={update('password')} placeholder="至少 8 位" autoComplete="new-password" /></label>
-      <label className="account-password-option"><input type="checkbox" checked={form.require_password_change} onChange={(event) => setForm((current) => ({ ...current, require_password_change: event.target.checked }))} /><span>首次登录后要求修改密码</span></label>
       <button className="primary-button" disabled={saving || !form.username.trim() || !form.name.trim() || form.password.length < 8}>{saving ? '正在创建…' : '创建账号'}</button>
     </form></details>
     <div className="toolbar-line admin-list-toolbar"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索姓名或账号" /></div><select className="admin-filter-select" value={role} onChange={(event) => setRole(event.target.value)}><option value="ALL">全部角色</option><option value="SUPER_ADMIN">超级管理员</option><option value="STAFF">老师</option></select><select className="admin-filter-select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">全部状态</option><option value="ACTIVE">正常</option><option value="DISABLED">停用</option></select><span className="toolbar-count">{accounts.length} 个账号</span></div>
-    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : accounts.length ? <div className="responsive-table account-table"><div className="table-row table-head"><span>姓名与账号</span><span>角色</span><span>状态</span><span>首次改密</span></div>{accounts.map((account) => <div className="table-row" key={account.id}><span><strong>{account.name}</strong><small>登录账号：{account.username}{account.current ? ' · 当前账号' : ''}</small></span><span>{account.role === 'SUPER_ADMIN' ? '超级管理员' : '老师'}</span><span><StatusPill status={account.status} /></span><span>{account.must_change_password ? '登录后需要修改' : '已完成'}</span></div>)}</div> : <Empty title="没有符合条件的账号" />}
+    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : accounts.length ? <div className="responsive-table account-table"><div className="table-row table-head"><span>姓名与账号</span><span>角色</span><span>状态</span><span>密码策略</span></div>{accounts.map((account) => <div className="table-row" key={account.id}><span><strong>{account.name}</strong><small>登录账号：{account.username}{account.current ? ' · 当前账号' : ''}</small></span><span>{account.role === 'SUPER_ADMIN' ? '超级管理员' : '老师'}</span><span><StatusPill status={account.status} /></span><span>无需首次强制改密</span></div>)}</div> : <Empty title="没有符合条件的账号" />}
   </>;
 }
 

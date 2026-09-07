@@ -154,6 +154,15 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
     assert.equal((await request('/api/auth/change-password', 64, 'POST', { old_password: '12345678', new_password: 'StudentNew123!', confirm_password: 'StudentNew123!' })).status, 200);
     assert.equal((await request('/api/admin/students')).data.items.find((s) => s.id === 64).must_change_password, false);
   });
+  await t.test('新管理账号即使请求首次改密，也不强制改密', async () => {
+    const created = await request('/api/admin/accounts', 1000, 'POST', { username: 'teststaffnew', name: '测试老师', password: 'TestStaff123!', role: 'STAFF', require_password_change: true });
+    assert.equal(created.status, 200);
+    assert.equal(created.data.account.must_change_password, false);
+    const login = await request('/api/auth/login', 1000, 'POST', { username: 'teststaffnew', password: 'TestStaff123!' });
+    assert.equal(login.status, 200);
+    assert.equal(login.data.user_type, 'STAFF');
+    assert.equal(login.data.must_change_password, false);
+  });
   await t.test('重启后有效人数与名单保持一致', async () => {
     const prior = (await request('/api/admin/enrollment-roster')).data;
     await stop(); await start();

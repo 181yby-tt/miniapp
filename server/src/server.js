@@ -438,7 +438,7 @@ async function handleRequest(req, res, acquireWrite) {
     if (u.locked_until && new Date(u.locked_until) > new Date()) return fail(res, 'ACCOUNT_LOCKED', '账号已锁定，请稍后再试', 423);
     if (u.status === 'DISABLED') return fail(res, 'ACCOUNT_DISABLED', '账号已停用', 403);
     const token = sign({ uid: u.id, user_type: u.user_type });
-    return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, display_name: u.display_name || u.username });
+    return ok(res, { token, user_type: u.user_type, must_change_password: u.user_type === 'STUDENT' && Boolean(u.must_change_password), username: u.username, display_name: u.display_name || u.username });
   }
 
   // 微信登录（wx.login code -> openid）：已绑定返回 token，未绑定返回 NEED_BIND + openid
@@ -454,7 +454,7 @@ async function handleRequest(req, res, acquireWrite) {
     const u = db.users.find((x) => x.wechat_openid === wx.openid);
     if (u && u.status !== 'DISABLED') {
       const token = sign({ uid: u.id, user_type: u.user_type });
-      return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, display_name: u.display_name || u.username, openid: wx.openid });
+      return ok(res, { token, user_type: u.user_type, must_change_password: u.user_type === 'STUDENT' && Boolean(u.must_change_password), username: u.username, display_name: u.display_name || u.username, openid: wx.openid });
     }
     // 未绑定：返回 openid，交由小程序走「学号 + 密码」绑定流程
     return ok(res, { code: 'NEED_BIND', openid: wx.openid });
@@ -471,7 +471,7 @@ async function handleRequest(req, res, acquireWrite) {
     u.updated_at = new Date().toISOString();
     save();
     const token = sign({ uid: u.id, user_type: u.user_type });
-    return ok(res, { token, user_type: u.user_type, must_change_password: u.must_change_password, username: u.username, display_name: u.display_name || u.username });
+    return ok(res, { token, user_type: u.user_type, must_change_password: u.user_type === 'STUDENT' && Boolean(u.must_change_password), username: u.username, display_name: u.display_name || u.username });
   }
 
   // 已登录用户绑定 openid（手动登录后自动关联，便于下次一键登录）
@@ -716,7 +716,7 @@ async function handleRequest(req, res, acquireWrite) {
         name: account.display_name || account.username,
         role: account.user_type,
         status: account.status,
-        must_change_password: Boolean(account.must_change_password),
+        must_change_password: false,
         created_at: account.created_at,
         current: account.id === user.id,
       }))
@@ -730,7 +730,7 @@ async function handleRequest(req, res, acquireWrite) {
     const name = String(body.name || '').trim();
     const password = String(body.password || '');
     const role = body.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'STAFF';
-    const mustChangePassword = body.require_password_change !== false;
+    const mustChangePassword = false; // 首次强制改密仅用于学生账号。
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) return fail(res, 'INVALID_USERNAME', '登录账号只能使用 3 至 64 位字母、数字、点、下划线或短横线', 400);
     if (!name || name.length > 64) return fail(res, 'INVALID_NAME', '姓名不能为空且不能超过 64 个字符', 400);
     if (password.length < 8 || password.length > 128) return fail(res, 'INVALID_PASSWORD', '初始密码必须为 8 至 128 位', 400);

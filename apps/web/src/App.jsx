@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createApiClient, createSessionStore, routeForSession } from '@kexu/client-core';
+import { createApiClient, createSessionStore, routeForSession, requiresStudentPasswordChange } from '@kexu/client-core';
 import AppShell from './components/AppShell.jsx';
 import { LoginPage, ChangePasswordPage } from './pages/AuthPages.jsx';
 import { CoursesPage, CourseDetailPage, EnrollmentsPage, ProfilePage, SchedulePage } from './pages/StudentPages.jsx';
@@ -20,14 +20,16 @@ export default function App() {
     onUnauthorized: () => { sessionStore.clear(); setSession(null); setProfile(null); navigate('/login', { replace: true }); },
   }), []);
   const isAdmin = ['STAFF', 'SUPER_ADMIN'].includes(session?.user_type);
+  const needsPasswordChange = requiresStudentPasswordChange(session);
 
   let redirectPath = '';
   if (!session && pathname !== '/login') redirectPath = '/login';
   else if (session && pathname === '/login') redirectPath = routeForSession(session);
-  else if (session?.must_change_password && pathname !== '/change-password') redirectPath = '/change-password';
-  else if (session && !session.must_change_password && isAdmin && !pathname.startsWith('/admin') && pathname !== '/change-password') redirectPath = '/admin';
-  else if (session && !session.must_change_password && pathname === '/admin/accounts' && session.user_type !== 'SUPER_ADMIN') redirectPath = '/admin';
-  else if (session && !session.must_change_password && !isAdmin && pathname.startsWith('/admin')) redirectPath = '/courses';
+  else if (needsPasswordChange && pathname !== '/change-password') redirectPath = '/change-password';
+  else if (isAdmin && session.must_change_password && pathname === '/change-password') redirectPath = '/admin';
+  else if (isAdmin && !pathname.startsWith('/admin') && pathname !== '/change-password') redirectPath = '/admin';
+  else if (session && pathname === '/admin/accounts' && session.user_type !== 'SUPER_ADMIN') redirectPath = '/admin';
+  else if (session && !needsPasswordChange && !isAdmin && pathname.startsWith('/admin')) redirectPath = '/courses';
 
   useEffect(() => {
     if (redirectPath) navigate(redirectPath, { replace: true });

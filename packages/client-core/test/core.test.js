@@ -2,6 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSchedule, createApiClient, createSessionStore, decorateCourse, routeForSession } from '../src/index.js';
 
+test('首次强制改密仅限已登录且需要改密的学生', () => {
+  assert.equal(routeForSession(null), '/login');
+  assert.equal(routeForSession({ user_type: 'STUDENT', must_change_password: true }), '/change-password');
+  assert.equal(routeForSession({ user_type: 'STUDENT', must_change_password: false }), '/courses');
+  for (const role of ['STAFF', 'SUPER_ADMIN']) {
+    assert.equal(routeForSession({ user_type: role, must_change_password: true }), '/admin');
+    assert.equal(routeForSession({ user_type: role, must_change_password: false }), '/admin');
+  }
+});
+
 test('session store tolerates invalid persisted data', () => {
   const memory = new Map([['kexu_session', '{bad']]);
   const storage = { getItem: (key) => memory.get(key), setItem: (key, value) => memory.set(key, value), removeItem: (key) => memory.delete(key) };
