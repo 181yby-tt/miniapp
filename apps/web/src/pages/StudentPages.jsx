@@ -29,13 +29,13 @@ export function CoursesPage({ api, toast }) {
     if (pendingId) return;
     setPendingId(id);
     try { await api.enroll(id, makeIdempotencyKey()); toast('报名成功，课程已加入“我的课程”'); setRefreshKey((key) => key + 1); }
-    catch (error) { toast(error.message, 'error'); }
+    catch (error) { toast(error.message, 'error'); setRefreshKey((key) => key + 1); }
     finally { setPendingId(null); }
   }
   const normalizedQuery = query.trim().toLowerCase();
   const items = (state.data?.items || []).filter((course) => {
     if (category && course.category !== category) return false;
-    if (filter === 'available' && (course.remaining <= 0 || course.enrolled)) return false;
+    if (filter === 'available' && (course.remaining <= 0 || course.enrolled || course.eligibility?.eligible === false)) return false;
     if (filter === 'enrolled' && !course.enrolled) return false;
     return !normalizedQuery || `${course.name}${course.teachers?.join('')}${course.category}`.toLowerCase().includes(normalizedQuery);
   });
@@ -43,7 +43,7 @@ export function CoursesPage({ api, toast }) {
   const maxActive = state.data?.mine?.max_active || 2;
   const remainingChoices = Math.max(0, maxActive - mineCount);
   return <>
-    <PageHeader eyebrow="本学期" title="课程选择" />
+    <PageHeader eyebrow="本学期" title="课程选择" description="自愿报名，满额即止。报名成功后可在“我的课程”查看。" action={<button className="secondary-button" disabled={state.loading || Boolean(pendingId)} onClick={() => setRefreshKey((key) => key + 1)}>刷新名额</button>} />
     <section className="course-overview"><div className="course-overview-main"><strong>{mineCount}<small> / {maxActive}</small></strong><div><span>已选课程</span><p>{mineCount >= maxActive ? '已达到上限，需要调整时请先退课。' : `还可以选择 ${remainingChoices} 门课程。`}</p></div></div><div className="course-overview-stat"><span>开放课程</span><strong>{state.data?.items?.length ?? '—'}</strong></div><div className="course-overview-stat"><span>仍有名额</span><strong>{state.data ? state.data.items.filter((course) => course.remaining > 0).length : '—'}</strong></div></section>
     <section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索课程、分类或老师" /></div><div className="segmented course-filters">{[['all', '全部课程'], ['available', '可以报名'], ['enrolled', '我已报名']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div></section>
     <div className="chip-row category-strip"><button className={!category ? 'active' : ''} onClick={() => setCategory('')}>全部</button>{(state.data?.categories || []).map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div>
@@ -53,9 +53,10 @@ export function CoursesPage({ api, toast }) {
 
 export function CourseDetailPage({ api, courseId, toast }) {
   const [refreshKey, setRefreshKey] = useState(0);
+  const [pending, setPending] = useState(false);
   const [state] = useLoad(async () => {
     const result = await api.getCourse(courseId);
-    let eligibility = null;
+    let eligibility = result.course.eligibility || null;
     if (!result.course.enrolled && result.course.status === 'OPEN' && result.course.remaining > 0) {
       try { eligibility = await api.getEligibility(courseId); } catch { eligibility = null; }
     }
@@ -65,13 +66,13 @@ export function CourseDetailPage({ api, courseId, toast }) {
   if (state.error) return <ErrorState message={state.error} onRetry={() => setRefreshKey((key) => key + 1)} />;
   const { course, eligibility } = state.data;
   const canEnroll = !course.enrolled && course.status === 'OPEN' && course.remaining > 0 && eligibility?.eligible !== false;
-  async function enroll() { try { await api.enroll(course.id, makeIdempotencyKey()); toast('报名成功'); setRefreshKey((key) => key + 1); } catch (error) { toast(error.message, 'error'); } }
-  async function withdraw() { if (!window.confirm('退课后名额会立即释放，确定要退出该课程吗？')) return; try { await api.withdraw(course.id); toast('已退课'); setRefreshKey((key) => key + 1); } catch (error) { toast(error.message, 'error'); } }
+  async function enroll() { if (pending) return; setPending(true); try { await api.enroll(course.id, makeIdempotencyKey()); toast('报名成功'); setRefreshKey((key) => key + 1); } catch (error) { toast(error.message, 'error'); setRefreshKey((key) => key + 1); } finally { setPending(false); } }
+  async function withdraw() { if (pending) return; if (!window.confirm('退课后名额会立即释放，确定要退出该课程吗？')) return; setPending(true); try { await api.withdraw(course.id); toast('已退课'); setRefreshKey((key) => key + 1); } catch (error) { toast(error.message, 'error'); } finally { setPending(false); } }
   return <>
     <button className="back-button" onClick={() => navigate('/courses')}>← 返回课程大厅</button>
     <section className={`detail-hero tone-surface-${course.tone}`}><CourseArtwork course={course} large /><div><span>学生端 · {course.category}</span><h1>{course.name}</h1><StatusPill status={course.status} /></div></section>
-    <div className="detail-grid"><section className="paper-card detail-facts"><h2>课程信息</h2><dl><div><dt>负责老师</dt><dd>{course.teacherText}</dd></div><div><dt>上课时间</dt><dd>{course.timeText}</dd></div><div><dt>上课场地</dt><dd>{course.venueText}</dd></div><div><dt>课程容量</dt><dd>{course.capacity} 人</dd></div><div><dt>剩余名额</dt><dd className={course.remaining ? 'good' : 'bad'}>{course.remaining} 人</dd></div></dl></section><section className="paper-card detail-description"><h2>课程简介</h2><p>{course.description || '暂无课程简介'}</p>{eligibility?.eligible === false ? <div className="inline-alert">{eligibility.reason}</div> : null}</section></div>
-    <div className="detail-actions">{course.enrolled ? <button className="danger-button" onClick={withdraw}>退课</button> : <button className="primary-button" disabled={!canEnroll} onClick={enroll}>{canEnroll ? `立即报名（余 ${course.remaining}）` : eligibility?.reason || (course.remaining <= 0 ? '已满员' : '暂不可报名')}</button>}</div>
+    <div className="detail-grid"><section className="paper-card detail-facts"><h2>课程信息</h2><dl><div><dt>负责老师</dt><dd>{course.teacherText}</dd></div><div><dt>上课时间</dt><dd>{course.timeText}</dd></div><div><dt>上课场地</dt><dd>{course.venueText}</dd></div><div><dt>课程容量</dt><dd>{course.capacity} 人</dd></div><div><dt>剩余名额</dt><dd className={course.remaining ? 'good' : 'bad'}>{course.remaining} 人</dd></div></dl></section><section className="paper-card detail-description"><h2>课程简介</h2>{course.enroll_start_at ? <p>开始报名：{formatDate(course.enroll_start_at)}</p> : null}{course.enroll_end_at ? <p>截止报名：{formatDate(course.enroll_end_at)}</p> : null}<p>{course.description || '暂无课程简介'}</p>{eligibility?.eligible === false ? <div className="inline-alert">{eligibility.reason}</div> : null}</section></div>
+    <div className="detail-actions">{course.enrolled ? <button className="danger-button" disabled={pending} onClick={withdraw}>{pending ? '处理中…' : '退课'}</button> : <button className="primary-button" disabled={!canEnroll || pending} onClick={enroll}>{pending ? '报名中…' : canEnroll ? `立即报名（余 ${course.remaining}）` : eligibility?.reason || (course.remaining <= 0 ? '已满员' : '暂不可报名')}</button>}</div>
   </>;
 }
 

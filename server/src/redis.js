@@ -91,8 +91,18 @@ async function withDistributedLock(name, action, { waitMilliseconds = 5000, ttlM
   throw error;
 }
 
+const studentQueues = new Map();
 async function withStudentLock(studentId, action) {
-  return withDistributedLock(`student:${studentId}`, action);
+  const previous = studentQueues.get(studentId) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  studentQueues.set(studentId, current);
+  await previous;
+  try { return await withDistributedLock(`student:${studentId}`, action); }
+  finally {
+    release();
+    if (studentQueues.get(studentId) === current) studentQueues.delete(studentId);
+  }
 }
 
 async function withScheduleLock(action) {

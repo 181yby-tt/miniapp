@@ -205,7 +205,7 @@ const COLLECTIONS = [
 // 需要 ISO <-> 'YYYY-MM-DD HH:MM:SS' 互转的列
 const DATETIME_COLS = {
   users: ['created_at', 'updated_at', 'locked_until'],
-  courses: ['created_at', 'updated_at'],
+  courses: ['created_at', 'updated_at', 'enroll_start_at', 'enroll_end_at'],
   enrollments: ['enrolled_at', 'cancelled_at'],
   teaching_groups: ['submission_start_at', 'submission_end_at', 'published_at', 'created_at', 'updated_at'],
   preference_submissions: ['submitted_at', 'updated_at'],
@@ -249,7 +249,11 @@ function readVal(collection, col, val) {
     return val; // 已是字符串
   }
   if ((DATETIME_COLS[collection] || []).indexOf(col) !== -1) {
-    if (typeof val === 'string' && val.indexOf(' ') !== -1) return val.replace(' ', 'T');
+    // 本项目写入 DATETIME 的值来自 UTC ISO，读取时必须保留 UTC 语义。
+    if (typeof val === 'string') {
+      const normalized = val.replace(' ', 'T');
+      return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
+    }
     return val;
   }
   return val;
@@ -514,11 +518,11 @@ function leaveDirectMutation() {
   if (activeDirectMutations === 0 && snapshotDrain) { snapshotDrain(); snapshotDrain = null; }
 }
 
-async function save() {
+async function save({ strict = false } = {}) {
   // 同步写文件作为容器内临时兜底；持久数据仍以所选云存储为准。
-  try { saveFile(); } catch (e) { /* ignore */ }
+  try { saveFile(); } catch (e) { if (strict && !cloudbaseMysqlReady && !mysqlReady) throw e; }
   if (!cloudbaseMysqlReady && !mysqlReady) return;
-  saveChain = saveChain
+  const operation = saveChain
     .then(async () => {
       snapshotPending = true;
       if (activeDirectMutations > 0) await new Promise((resolve) => { snapshotDrain = resolve; });
@@ -540,9 +544,9 @@ async function save() {
         const waiters = mutationWaiters; mutationWaiters = [];
         waiters.forEach((resolve) => resolve());
       }
-    })
-    .catch((e) => console.error('[存储] 云端写入失败:', e.message));
-  return saveChain;
+    });
+  saveChain = operation.catch((e) => console.error('[存储] 云端写入失败:', e.message));
+  return strict ? operation : saveChain;
 }
 
 // 报名高并发路径只更新相关行，避免每次报名都执行整库 DELETE + INSERT。
@@ -583,6 +587,13 @@ async function persistEnrollmentMutation({ mode, courseId, enrollment, auditLog 
     if (!courseRows.length) {
       const error = new Error('课程不存在'); error.code = 'NOT_FOUND'; throw error;
     }
+    const [existingRows] = await conn.query('SELECT `id`,`status` FROM `enrollments` WHERE `student_id`=? AND `course_id`=? FOR UPDATE', [enrollment.student_id, courseId]);
+    if (mode === 'enroll' && existingRows[0]?.status === 'ENROLLED') {
+      const error = new Error('你已报名该课程'); error.code = 'ALREADY_ENROLLED'; throw error;
+    }
+    if (existingRows[0] && Number(existingRows[0].id) !== enrollment.id) {
+      const error = new Error('报名记录已变化，请刷新后重试'); error.code = 'BUSY_RETRY'; throw error;
+    }
     if (mode === 'enroll') {
       const [updated] = await conn.query('UPDATE `courses` SET `active_count`=`active_count`+1,`version`=`version`+1 WHERE `id`=? AND `active_count`<`capacity`', [courseId]);
       if (!updated.affectedRows) { const error = new Error('课程名额已满'); error.code = 'COURSE_FULL'; throw error; }
@@ -592,8 +603,12 @@ async function persistEnrollmentMutation({ mode, courseId, enrollment, auditLog 
 
     const columns = Object.keys(enrollment);
     const values = columns.map((column) => writeVal('enrollments', column, enrollment[column]));
-    const updates = columns.filter((column) => column !== 'id').map((column) => `\`${column}\`=VALUES(\`${column}\`)`).join(',');
-    await conn.query(`INSERT INTO \`enrollments\` (${columns.map((column) => `\`${column}\``).join(',')}) VALUES (${columns.map(() => '?').join(',')}) ON DUPLICATE KEY UPDATE ${updates}`, values);
+    if (existingRows.length) {
+      await conn.query(`UPDATE \`enrollments\` SET ${columns.map((column) => `\`${column}\`=?`).join(',')} WHERE \`id\`=?`, [...values, enrollment.id]);
+    } else {
+      // 重复幂等键必须报错并回滚，不能覆盖其他学生的记录。
+      await conn.query(`INSERT INTO \`enrollments\` (${columns.map((column) => `\`${column}\``).join(',')}) VALUES (${columns.map(() => '?').join(',')})`, values);
+    }
 
     if (auditLog) {
       const auditColumns = Object.keys(auditLog);
@@ -617,6 +632,7 @@ async function persistEnrollmentMutation({ mode, courseId, enrollment, auditLog 
 /* ----------------------------- 统一初始化入口 ----------------------------- */
 
 async function initStore() {
+  if (USE_MYSQL && process.env.NODE_ENV === 'production' && !mysql2()) throw new Error('缺少 MySQL 驱动，不能切换到临时文件存储');
   if (USE_CLOUDBASE_MYSQL) {
     try {
       if (!cloudbaseSdk()) throw new Error('CloudBase SDK 不可用');
@@ -638,6 +654,7 @@ async function initStore() {
       console.log(`[存储] 使用 MySQL 持久化: ${DB_CFG.host}:${DB_CFG.port}/${DB_CFG.database}`);
       return;
     } catch (e) {
+      if (process.env.NODE_ENV === 'production') throw new Error(`MySQL 初始化失败，停止启动：${e.message}`);
       console.error('[存储] MySQL 初始化失败，回退到文件存储:', e.message);
       mysqlReady = false;
       pool = null;
@@ -646,4 +663,4 @@ async function initStore() {
   loadOrSeedFile();
 }
 
-module.exports = { db, nextId, initStore, save, refreshEnrollmentState, persistEnrollmentMutation };
+module.exports = { db, nextId, initStore, save, waitForSaves: () => saveChain, refreshEnrollmentState, persistEnrollmentMutation };

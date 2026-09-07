@@ -34,16 +34,17 @@ export function CourseArtwork({ course: rawCourse, large = false }) {
 
 export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = false, pending = false }) {
   const course = decorateCourse(rawCourse);
-  const disabled = course.remaining <= 0 || course.enrolled;
+  const disabled = course.remaining <= 0 || course.enrolled || course.status !== 'OPEN' || course.eligibility?.eligible === false;
   return (
     <article className={`course-card ${compact ? 'compact' : ''}`} onClick={() => onOpen?.(course.id)}>
       <CourseArtwork course={course} />
       <div className="course-card-main">
         <div className="course-card-heading">
           <h3>{course.name}</h3>
-          {onEnroll ? <button className={`small-action ${course.enrolled ? 'success' : ''}`} disabled={disabled || pending} onClick={(event) => { event.stopPropagation(); onEnroll(course.id); }}>{pending ? '报名中…' : course.enrolled ? '已报名' : course.remaining > 0 ? '报名' : '已满'}</button> : null}
+          {onEnroll ? <button title={course.eligibility?.reason || ''} className={`small-action ${course.enrolled ? 'success' : ''}`} disabled={disabled || pending} onClick={(event) => { event.stopPropagation(); onEnroll(course.id); }}>{pending ? '报名中…' : course.enrolled ? '已报名' : course.remaining <= 0 ? '已满' : disabled ? '暂不可报' : '报名'}</button> : null}
         </div>
         <div className="course-meta"><span>{course.teacherText}</span><span>{course.timeText}</span><span>{course.venueText}</span></div>
+        {!compact && !course.enrolled && course.eligibility?.reason ? <p className="helper-text">{course.eligibility.reason}</p> : null}
         {!compact && course.description ? <p className="course-description">{course.description}</p> : null}
         <div className="seat-row"><div className="seat-track"><i style={{ width: `${course.fillPercent}%` }} /></div><span>余 <b className={course.remaining <= 3 ? 'low' : ''}>{course.remaining}</b> / {course.capacity}</span></div>
       </div>
@@ -52,6 +53,6 @@ export function CourseCard({ course: rawCourse, onOpen, onEnroll, compact = fals
 }
 
 export function StatusPill({ status }) {
-  const labels = { OPEN: '项目启用', DRAFT: '待完善', CLOSED: '暂停使用', FINISHED: '课程已结束', ARCHIVED: '历史项目', ENROLLED: '已分配', WITHDRAWN: '已退出', CANCELLED: '已取消', ACTIVE: '正常', DISABLED: '停用' };
+  const labels = { OPEN: '开放报名', DRAFT: '待完善', CLOSED: '暂停报名', FINISHED: '课程已结束', ARCHIVED: '历史课程', ENROLLED: '已报名', WITHDRAWN: '已退出', CANCELLED: '已退课', ACTIVE: '正常', DISABLED: '停用' };
   return <span className={`status-pill status-${status}`}>{labels[status] || status || '未知'}</span>;
 }

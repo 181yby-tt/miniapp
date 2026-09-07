@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { makeIdempotencyKey } from '@kexu/client-core';
 import { Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
 import CourseEditor from '../components/admin/CourseEditor.jsx';
 import CourseImportPanel from '../components/admin/CourseImportPanel.jsx';
 import StudentImportPanel from '../components/admin/StudentImportPanel.jsx';
 import { formatDate } from '../runtime/browser.js';
+import { downloadEnrollmentRoster } from '../utils/enrollmentRosterExport.js';
 import { buildEnrollmentSummarySheet, ENROLLMENT_SUMMARY_COLUMNS, localDateStamp, summarizeEnrollmentCourses } from '../utils/enrollmentSummaryExport.js';
 
 const CONFIG_TEXT = {
@@ -20,6 +22,8 @@ const AUDIT_TEXT = {
   CHANGE_PASSWORD: '修改密码', IMPORT_STUDENTS: '导入学生名单', CREATE_COURSE: '新建课程', UPDATE_COURSE: '修改课程与排课',
   COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '暂停课程报名', COURSE_ARCHIVE: '移入历史课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
   ENROLL: '学生报名', WITHDRAW: '学生退课', STAFF_ENROLL: '教务代报名', STAFF_WITHDRAW: '教务代退课', CREATE_TEACHER_ACCOUNT: '新增教师账号', CREATE_ADMIN_ACCOUNT: '新增管理账号',
+  OPEN_ENROLLMENT_GROUP: '开放教学组报名', CLOSE_ENROLLMENT_GROUP: '停止教学组报名',
+  RESET_STUDENT_PASSWORD: '重置学生密码',
   CREATE_TEACHING_GROUP: '新建教学组', OPEN_PREFERENCES: '开放志愿填报', CLOSE_PREFERENCES: '停止志愿填报', SUBMIT_PREFERENCES: '提交志愿', SIMULATE_ALLOCATION: '运行模拟分配', PUBLISH_ALLOCATION: '发布分配结果',
 };
 const AUDIT_TARGET_TEXT = { course: '体育项目', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', teacher_account: '教师账号', venues: '场地', categories: '项目分类', 'time-slots': '时间段', teaching_group: '教学组' };
@@ -42,8 +46,8 @@ export function AdminDashboardPage({ api }) {
   if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
   return <>
     <PageHeader eyebrow="选课排课" title="工作台" />
-    <section className="metric-grid admin-metrics"><Metric value={data.students} label="学生人数" /><Metric value={data.teaching_groups} label="教学组" /><Metric value={data.open_preference_groups} label="正在填报" /><Metric value={data.preference_submissions} label="已交志愿" tone="accent" /></section>
-    <div className="dashboard-grid"><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">志愿填报</p><h2>当前进度</h2></div></div><div className="signal-grid"><div><strong>{data.open_preference_groups}</strong><span>教学组正在填报</span></div><div><strong>{data.preference_submissions}</strong><span>学生已提交</span></div><div><strong>{data.published_groups}</strong><span>教学组已发布</span></div><div><strong>{data.teaching_groups - data.published_groups}</strong><span>教学组待完成</span></div></div></section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">需要处理</p><h2>教务提醒</h2></div></div><div className="signal-grid"><div><strong>{data.draft_courses}</strong><span>待完善项目</span></div><div><strong>{data.conflict_courses}</strong><span>排课冲突</span></div><div><strong>{data.students_need_pwd}</strong><span>学生尚未修改初始密码</span></div><div><strong>{data.open_preference_groups}</strong><span>填报中的教学组</span></div></div></section></div>
+    <section className="metric-grid admin-metrics"><Metric value={data.students} label="学生人数" /><Metric value={data.enrolled_students} label="已报名学生" /><Metric value={Math.max(0, data.students - data.enrolled_students)} label="未报名学生" /><Metric value={data.remaining_seats} label="剩余名额" tone="accent" /></section>
+    <div className="dashboard-grid"><section className="paper-card"><div className="card-title"><h2>报名情况</h2></div><div className="signal-grid"><div><strong>{data.open_courses}</strong><span>开放课程</span></div><div><strong>{data.full_courses}</strong><span>已满课程</span></div><div><strong>{data.active_enrollments}</strong><span>有效报名人次</span></div><div><strong>{data.teaching_groups}</strong><span>教学组</span></div></div></section><section className="paper-card"><div className="card-title"><h2>教务提醒</h2></div><div className="signal-grid"><div><strong>{data.draft_courses}</strong><span>待完善课程</span></div><div><strong>{data.conflict_courses}</strong><span>排课冲突</span></div><div><strong>{data.students_need_pwd}</strong><span>尚未修改初始密码</span></div><div><strong>{data.closed_courses}</strong><span>暂停报名课程</span></div></div></section></div>
   </>;
 }
 
@@ -61,12 +65,12 @@ export function AdminCoursesPage({ api, toast }) {
   const refresh = () => { setEditorCourse(undefined); setRefreshKey((key) => key + 1); };
   async function changeStatus(course, action) {
     const messages = {
-      open: `确认启用“${course.name}”吗？\n\n启用后，这个项目可以加入教学组供学生填报志愿。`,
-      close: `确认暂停使用“${course.name}”吗？\n\n暂停后，新教学组不能开放这个项目，已有资料和排课不会删除。`,
+      open: `确认启用“${course.name}”吗？\n\n开放后，符合范围的学生可以在规定时间内报名；`,
+      close: `确认暂停报名“${course.name}”吗？\n\n暂停后，学生不能继续报名或自行退课，已有名单和排课保留。`,
       archive: `确认把“${course.name}”移入历史课程吗？\n\n它将不再参与当前排课和报名，但课程资料、学生报名记录都会保留。`,
     };
     if (!window.confirm(messages[action])) return;
-    const success = { open: '项目已启用', close: '项目已暂停', archive: '已移入历史项目' };
+    const success = { open: '报名已开放', close: '项目已暂停', archive: '已移入历史项目' };
     try { await api.setCourseStatus(course.id, action); toast(success[action]); refresh(); }
     catch (error) { toast(error.message, 'error'); }
   }
@@ -74,10 +78,10 @@ export function AdminCoursesPage({ api, toast }) {
   if (state.error) return <ErrorState message={state.error} onRetry={refresh} />;
   return <>
     <PageHeader eyebrow="教务管理" title="体育项目" action={<button className="primary-action" onClick={() => setEditorCourse(null)}>新建体育项目</button>} />
-    <details className="course-status-guide"><summary>项目状态说明</summary><span><b>待完善</b>：继续补充老师和排课；<b>项目启用</b>：可以加入教学组；<b>暂停使用</b>：暂不用于新教学组；<b>历史项目</b>：资料与历史结果继续保留。</span></details>
+    <details className="course-status-guide"><summary>项目状态说明</summary><span><b>待完善</b>：继续补充老师和排课；<b>开放报名</b>：在规定时间内接受报名；<b>暂停报名</b>：不再接受学生报名；<b>历史项目</b>：资料与历史结果继续保留。</span></details>
     <CourseImportPanel api={api} courses={state.data.courses} meta={state.data.meta} toast={toast} onImported={refresh} />
-    <section className="toolbar-line admin-list-toolbar"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目或任课教师" /></div><select className="admin-filter-select" value={category} onChange={(event) => setCategory(event.target.value)}><option value="ALL">全部分类</option>{state.data.meta.categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select><select className="admin-filter-select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">全部状态</option><option value="OPEN">项目启用</option><option value="DRAFT">待完善</option><option value="CLOSED">暂停使用</option><option value="FINISHED">课程结束</option><option value="ARCHIVED">历史项目</option></select><span className="toolbar-count">{items.length} 个项目</span></section>
-    {items.length ? <div className="admin-course-grid">{items.map((course) => <article className={`admin-course-card ${course.status === 'ARCHIVED' ? 'is-history' : ''}`} key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>任课教师：{course.teachers?.join('、') || '尚未安排'}</p><p>上课安排：{course.schedules?.map((item) => `${item.slot_name} · ${item.venue_name}`).join('；') || '尚未排课'}</p></div><strong>{course.active_count}<small> / {course.capacity} 人</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions"><button className="course-edit-action" onClick={() => setEditorCourse(course)}>{course.status === 'ARCHIVED' ? '查看或修改资料' : '修改资料与排课'}</button>{['DRAFT', 'CLOSED'].includes(course.status) ? <button className="course-open-action" onClick={() => changeStatus(course, 'open')}>启用项目</button> : null}{course.status === 'OPEN' ? <button className="course-pause-action" onClick={() => changeStatus(course, 'close')}>暂停使用</button> : null}{['DRAFT', 'CLOSED', 'FINISHED'].includes(course.status) ? <button className="course-history-action" onClick={() => changeStatus(course, 'archive')}>移入历史项目</button> : null}{course.status === 'ARCHIVED' ? <span className="history-note">已退出当前教学组与排课</span> : null}</div></article>)}</div> : <Empty title="没有符合条件的体育项目" />}
+    <section className="toolbar-line admin-list-toolbar"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目或任课教师" /></div><select className="admin-filter-select" value={category} onChange={(event) => setCategory(event.target.value)}><option value="ALL">全部分类</option>{state.data.meta.categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select><select className="admin-filter-select" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">全部状态</option><option value="OPEN">开放报名</option><option value="DRAFT">待完善</option><option value="CLOSED">暂停报名</option><option value="FINISHED">课程结束</option><option value="ARCHIVED">历史项目</option></select><span className="toolbar-count">{items.length} 个项目</span></section>
+    {items.length ? <div className="admin-course-grid">{items.map((course) => <article className={`admin-course-card ${course.status === 'ARCHIVED' ? 'is-history' : ''}`} key={course.id}><div className="admin-course-top"><div><StatusPill status={course.status} /><h2>{course.name}</h2><p>任课教师：{course.teachers?.join('、') || '尚未安排'}</p><p>上课安排：{course.schedules?.map((item) => `${item.slot_name} · ${item.venue_name}`).join('；') || '尚未排课'}</p></div><strong>{course.active_count}<small> / {course.capacity} 人</small></strong></div><div className="seat-track"><i style={{ width: `${course.capacity ? Math.round(course.active_count / course.capacity * 100) : 0}%` }} /></div><div className="card-actions"><button className="course-edit-action" onClick={() => setEditorCourse(course)}>{course.status === 'ARCHIVED' ? '查看或修改资料' : '修改资料与排课'}</button>{['DRAFT', 'CLOSED'].includes(course.status) ? <button className="course-open-action" onClick={() => changeStatus(course, 'open')}>开放报名</button> : null}{course.status === 'OPEN' ? <button className="course-pause-action" onClick={() => changeStatus(course, 'close')}>暂停报名</button> : null}{['DRAFT', 'CLOSED', 'FINISHED'].includes(course.status) ? <button className="course-history-action" onClick={() => changeStatus(course, 'archive')}>移入历史项目</button> : null}{course.status === 'ARCHIVED' ? <span className="history-note">已退出当前教学组与排课</span> : null}</div></article>)}</div> : <Empty title="没有符合条件的体育项目" />}
     {editorCourse !== undefined ? <CourseEditor api={api} course={editorCourse} meta={state.data.meta} toast={toast} onClose={() => setEditorCourse(undefined)} onSaved={refresh} /> : null}
   </>;
 }
@@ -125,19 +129,28 @@ export function AdminSchedulePage({ api, toast }) {
 
 export function AdminStudentsPage({ api, toast }) {
   const [query, setQuery] = useState('');
+  const [passwordState, setPasswordState] = useState('ALL');
+  const [resetting, setResetting] = useState(null);
   const [grade, setGrade] = useState('ALL');
   const [className, setClassName] = useState('ALL');
   const [state, reload] = useAdminLoad(() => api.getAdminStudents(), []);
   const source = state.data?.items || [];
   const grades = [...new Set(source.map((item) => item.grade).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const classes = [...new Set(source.filter((item) => grade === 'ALL' || item.grade === grade).map((item) => item.class_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  const items = source.filter((item) => (grade === 'ALL' || item.grade === grade) && (className === 'ALL' || item.class_name === className) && `${item.student_no}${item.name}${item.grade}${item.class_name}`.includes(query.trim()));
+  const items = source.filter((item) => (passwordState === 'ALL' || (passwordState === 'PENDING' ? item.must_change_password === true : item.must_change_password === false)) && (grade === 'ALL' || item.grade === grade) && (className === 'ALL' || item.class_name === className) && `${item.student_no}${item.name}${item.grade}${item.class_name}`.includes(query.trim()));
+  async function resetPassword(student) {
+    if (!window.confirm('重置“' + student.name + '（' + student.student_no + '）”的密码？将恢复为统一初始密码，下次登录需重新修改。')) return;
+    setResetting(student.id);
+    try { await api.resetStudentPassword(student.id); toast('已重置为统一初始密码'); reload(); }
+    catch (error) { toast(error.message, 'error'); }
+    finally { setResetting(null); }
+  }
   const changeGrade = (value) => { setGrade(value); setClassName('ALL'); };
   return <>
     <PageHeader eyebrow="教务管理" title="学生" />
     <StudentImportPanel api={api} toast={toast} onImported={reload} />
-    <div className="toolbar-line admin-list-toolbar"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号或姓名" /></div><select className="admin-filter-select" value={grade} onChange={(event) => changeGrade(event.target.value)}><option value="ALL">全部年级</option>{grades.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="admin-filter-select" value={className} onChange={(event) => setClassName(event.target.value)}><option value="ALL">全部班级</option>{classes.map((item) => <option key={item} value={item}>{item}</option>)}</select><span className="toolbar-count">{items.length} 名学生</span></div>
-    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>姓名与登录账号</span><span>年级班级</span><span>已选课程</span><span>账号状态</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>登录账号：{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /></span></div>)}</div> : <Empty title="没有符合条件的学生" />}
+    <div className="toolbar-line admin-list-toolbar"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号或姓名" /></div><select className="admin-filter-select" value={grade} onChange={(event) => changeGrade(event.target.value)}><option value="ALL">全部年级</option>{grades.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="admin-filter-select" value={className} onChange={(event) => setClassName(event.target.value)}><option value="ALL">全部班级</option>{classes.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="admin-filter-select" value={passwordState} onChange={(event) => setPasswordState(event.target.value)}><option value="ALL">全部改密状态</option><option value="PENDING">待修改初始密码</option><option value="CHANGED">已修改密码</option></select><span className="toolbar-count">{items.length} 名学生</span></div>
+    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>姓名与登录账号</span><span>年级班级</span><span>已选课程</span><span>账号与密码</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>登录账号：{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /><small>{student.must_change_password === null ? '未关联账号' : student.must_change_password ? '待修改初始密码' : '已修改密码'}</small>{student.must_change_password !== null ? <button type="button" disabled={resetting !== null} onClick={() => resetPassword(student)}>{resetting === student.id ? '重置中…' : '重置密码'}</button> : null}</span></div>)}</div> : <Empty title="没有符合条件的学生" />}
   </>;
 }
 
@@ -212,7 +225,34 @@ export function AdminResourcesPage({ api, toast }) {
 export function AdminEnrollmentsPage({ api, toast }) {
   const [query, setQuery] = useState(''); const [status, setStatus] = useState('ALL');
   const [state, reload] = useAdminLoad(() => api.getAdminEnrollments({ query, status }), [query, status]);
-  const [reportState] = useAdminLoad(() => api.getAdminCourses(), []);
+  const [exporting, setExporting] = useState(false);
+  async function downloadRoster() {
+    setExporting(true);
+    try { await downloadEnrollmentRoster(api); toast('已导出“已报名”和“未报名”两个工作表'); }
+    catch (error) { toast(error.message, 'error'); }
+    finally { setExporting(false); }
+  }
+  const [reportState, reloadReport] = useAdminLoad(() => api.getAdminCourses(), []);
+  const [manual, setManual] = useState({ student_no: '', course_id: '' });
+  const [changing, setChanging] = useState(false);
+  async function addEnrollment(event) {
+    event.preventDefault(); setChanging(true);
+    try {
+      const students = await api.getAdminStudents(manual.student_no.trim());
+      const student = students.items.find((row) => row.student_no === manual.student_no.trim());
+      if (!student) throw new Error('没有找到这个学号，请先添加学生资料');
+      await api.enrollForStudent(Number(manual.course_id), student.id, makeIdempotencyKey('staff'), '教务代报名');
+      toast('报名已添加'); setManual({ student_no: '', course_id: '' }); await Promise.all([reload(), reloadReport()]);
+    } catch (error) { toast(error.message, 'error'); }
+    finally { setChanging(false); }
+  }
+  async function removeEnrollment(record) {
+    if (!window.confirm(`为“${record.student_name}”退出“${record.course_name}”？退课后名额会释放。`)) return;
+    setChanging(true);
+    try { await api.withdrawForStudent(record.enrollment_id); toast('已办理退课'); await Promise.all([reload(), reloadReport()]); }
+    catch (error) { toast(error.message, 'error'); }
+    finally { setChanging(false); }
+  }
   const reportCourses = reportState.data?.items || [];
   const summary = summarizeEnrollmentCourses(reportCourses);
   async function downloadReport() {
@@ -227,7 +267,7 @@ export function AdminEnrollmentsPage({ api, toast }) {
       toast('报课人数表已生成');
     } catch (error) { toast(error.message || '报课人数表生成失败', 'error'); }
   }
-  return <><PageHeader eyebrow="学生报名和退课记录" title="报名管理" description="按学生、学号或课程查询报名结果，也可以一键生成全校课程报课人数统计表。" action={<button className="primary-action export-action" disabled={reportState.loading || Boolean(reportState.error)} onClick={downloadReport}><span aria-hidden="true">↓</span>{reportState.loading ? '正在准备数据' : '导出报课人数表'}</button>} />{reportState.error ? <div className="inline-alert">统计数据暂时无法读取：{reportState.error}</div> : <section className="metric-grid compact-metrics report-metrics"><Metric value={summary.courseCount} label="统计课程" /><Metric value={summary.totalEnrolled} label="已报名人次" /><Metric value={summary.remaining} label="剩余名额" tone="accent" /></section>}<section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或课程" /></div><div className="chip-row inline">{['ALL', 'ENROLLED', 'WITHDRAWN', 'CANCELLED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部记录' : <StatusPill status={item} />}</button>)}</div></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : state.data.items.length ? <div className="responsive-table enrollment-table"><div className="table-row table-head"><span>课程</span><span>学生</span><span>状态</span><span>操作来源</span><span>时间</span></div>{state.data.items.map((item) => <div className="table-row" key={item.enrollment_id}><span><strong>{item.course_name}</strong></span><span>{item.student_name}<small>{item.student_no}</small></span><span><StatusPill status={item.status} /></span><span>{item.source === 'STUDENT' ? '学生自行操作' : '教务人员操作'}</span><span>{formatDate(item.enrolled_at)}</span></div>)}</div> : <Empty title="暂无报名记录" description="学生报名后，详细记录会显示在这里；课程人数统计表仍可直接导出。" />}</>;
+  return <><PageHeader eyebrow="学生报名和退课记录" title="报名管理" description="按学生、学号或课程查询报名结果，也可以一键生成全校课程报课人数统计表。" action={<div className="roster-export-actions"><button className="primary-action" disabled={exporting} onClick={downloadRoster}>{exporting ? '正在导出…' : '导出全校报名名单'}</button><button className="secondary-button export-action" disabled={reportState.loading || Boolean(reportState.error)} onClick={downloadReport}><span aria-hidden="true">↓</span>{reportState.loading ? '正在准备数据' : '导出报课人数表'}</button></div>} /><details className="group-create-panel"><summary><strong>为学生添加报名</strong><span>展开</span></summary><form onSubmit={addEnrollment}><label><span>学生学号</span><input required value={manual.student_no} onChange={(event) => setManual({ ...manual, student_no: event.target.value })} placeholder="输入完整学号" /></label><label><span>课程</span><select required value={manual.course_id} onChange={(event) => setManual({ ...manual, course_id: event.target.value })}><option value="">选择课程</option>{reportCourses.filter((course) => course.status === 'OPEN').map((course) => <option key={course.id} value={course.id}>{course.name}（剩余 {course.remaining}）</option>)}</select></label><button className="primary-button" disabled={changing}>{changing ? '正在处理…' : '确认添加报名'}</button></form></details>{reportState.error ? <div className="inline-alert">统计数据暂时无法读取：{reportState.error}</div> : <section className="metric-grid compact-metrics report-metrics"><Metric value={summary.courseCount} label="统计课程" /><Metric value={summary.totalEnrolled} label="已报名人次" /><Metric value={summary.remaining} label="剩余名额" tone="accent" /></section>}<section className="toolbar-line"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号、姓名或课程" /></div><div className="chip-row inline">{['ALL', 'ENROLLED', 'WITHDRAWN', 'CANCELLED'].map((item) => <button key={item} className={status === item ? 'active' : ''} onClick={() => setStatus(item)}>{item === 'ALL' ? '全部记录' : <StatusPill status={item} />}</button>)}</div></section>{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : state.data.items.length ? <div className="responsive-table enrollment-table"><div className="table-row table-head"><span>课程</span><span>学生</span><span>状态</span><span>操作来源</span><span>时间</span></div>{state.data.items.map((item) => <div className="table-row" key={item.enrollment_id}><span><strong>{item.course_name}</strong></span><span>{item.student_name}<small>{item.student_no}</small></span><span><StatusPill status={item.status} /></span><span>{item.source === 'STUDENT' ? '学生报名' : item.source === 'ALLOCATION' ? '历史志愿分配' : '教务人员操作'}</span><span>{formatDate(item.enrolled_at)}{item.status === 'ENROLLED' ? <button className="enrollment-withdraw" disabled={changing} onClick={() => removeEnrollment(item)}>办理退课</button> : null}</span></div>)}</div> : <Empty title="暂无报名记录" description="学生报名后，详细记录会显示在这里；课程人数统计表仍可直接导出。" />}</>;
 }
 
 export function AdminSettingsPage({ api, toast }) {
@@ -237,6 +277,6 @@ export function AdminSettingsPage({ api, toast }) {
   async function save() { try { await api.updateAdminConfigs(draft.map(({ key, value }) => ({ key, value }))); toast('选课规则已保存'); reload(); } catch (error) { toast(error.message, 'error'); } }
   if (state.loading) return <Loading />;
   if (state.error) return <ErrorState message={state.error} onRetry={reload} />;
-  const ruleGroups = ['账号安全'];
-  return <><PageHeader eyebrow="系统规则" title="账号安全与操作记录" description="志愿数量、教学组班级和是否允许调剂，都在“教学组与分配”中逐组设置。" /><div className="rule-summary"><strong>志愿分配规则</strong><span>系统按第一、第二、第三志愿依次分配；超额项目使用可复现随机抽取，发布前可以反复模拟核对。</span></div><div className="settings-grid"><section className="paper-card rules-card"><div className="card-title"><div><p className="eyebrow ink">学生登录设置</p><h2>账号安全</h2></div><button className="primary-compact" onClick={save}>保存修改</button></div>{ruleGroups.map((group) => <section className="rule-group" key={group}><div className="config-list">{draft.map((item, index) => ({ item, index, text: CONFIG_TEXT[item.key] })).filter((entry) => entry.text?.group === group).map(({ item, index, text }) => <label key={item.key}><span><strong>{text.label}</strong><small>{text.help}</small></span><span className="rule-control">{item.type === 'bool' ? <select value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))}><option value="true">允许</option><option value="false">不允许</option></select> : <input type={text.input || 'number'} min={text.input ? undefined : '0'} value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} />}{text.unit ? <small>{text.unit}</small> : null}</span></label>)}</div></section>)}</section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">谁在什么时候做了什么</p><h2>最近操作</h2></div><span>最近 100 条</span></div><div className="audit-list readable-audit">{state.data.audit.length ? state.data.audit.map((item) => <div key={item.id}><span><strong><b>{item.actor_name || '系统'}</b> · {AUDIT_TEXT[item.action] || '进行了系统操作'}</strong><small>{item.target_name ? `${AUDIT_TARGET_TEXT[item.target_type] || '对象'}：${item.target_name}` : AUDIT_TARGET_TEXT[item.target_type] || '系统记录'}</small></span><time>{formatDate(item.created_at)}</time></div>) : <Empty title="暂无操作记录" />}</div></section></div></>;
+  const ruleGroups = ['学生选课', '退课处理', '账号安全'];
+  return <><PageHeader eyebrow="系统规则" title="选课规则与操作记录" /><div className="rule-summary"><strong>自主报名</strong><span>报名成功即占用名额，满额即止。学生可以不报名；</span></div><div className="settings-grid"><section className="paper-card rules-card"><div className="card-title"><div><p className="eyebrow ink">报名与账号设置</p><h2>系统规则</h2></div><button className="primary-compact" onClick={save}>保存修改</button></div>{ruleGroups.map((group) => <section className="rule-group" key={group}><div className="config-list">{draft.map((item, index) => ({ item, index, text: CONFIG_TEXT[item.key] })).filter((entry) => entry.text?.group === group).map(({ item, index, text }) => <label key={item.key}><span><strong>{text.label}</strong><small>{text.help}</small></span><span className="rule-control">{item.type === 'bool' ? <select value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))}><option value="true">允许</option><option value="false">不允许</option></select> : <input type={text.input || 'number'} min={text.input ? undefined : '0'} value={item.value} onChange={(event) => setDraft((items) => items.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} />}{text.unit ? <small>{text.unit}</small> : null}</span></label>)}</div></section>)}</section><section className="paper-card"><div className="card-title"><div><p className="eyebrow ink">谁在什么时候做了什么</p><h2>最近操作</h2></div><span>最近 100 条</span></div><div className="audit-list readable-audit">{state.data.audit.length ? state.data.audit.map((item) => <div key={item.id}><span><strong><b>{item.actor_name || '系统'}</b> · {AUDIT_TEXT[item.action] || '进行了系统操作'}</strong><small>{item.target_name ? `${AUDIT_TARGET_TEXT[item.target_type] || '对象'}：${item.target_name}` : AUDIT_TARGET_TEXT[item.target_type] || '系统记录'}</small></span><time>{formatDate(item.created_at)}</time></div>) : <Empty title="暂无操作记录" />}</div></section></div></>;
 }

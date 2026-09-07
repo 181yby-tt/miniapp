@@ -95,6 +95,7 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
     createAdminMeta: (type, payload) => request(`/api/admin/meta/${type}`, { method: 'POST', body: payload }),
     setCourseStatus: (id, action) => request(`/api/admin/courses/${id}/${action}`, { method: 'POST', body: {} }),
     getAdminStudents: (query = '') => request(`/api/admin/students${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+    resetStudentPassword: (id) => request(`/api/admin/students/${id}/reset-password`, { method: 'POST', body: {} }),
     importAdminStudents: (payload) => request('/api/admin/students/import', { method: 'POST', body: payload }),
     getAdminEnrollments: ({ query = '', status = 'ENROLLED' } = {}) => {
       const params = new URLSearchParams({ status });
@@ -102,6 +103,9 @@ export function createApiClient({ baseUrl = '', fetchImpl = globalThis.fetch, se
       return request(`/api/admin/enrollments?${params}`);
     },
     getAdminConfigs: () => request('/api/admin/configs'),
+    getEnrollmentRoster: (groupId) => request(`/api/admin/enrollment-roster${groupId ? `?group_id=${groupId}` : ''}`),
+    enrollForStudent: (courseId, studentId, idempotencyKey, reason) => request(`/api/admin/courses/${courseId}/enrollments`, { method: 'POST', body: { student_id: studentId, idempotency_key: idempotencyKey, reason } }),
+    withdrawForStudent: (enrollmentId) => request(`/api/admin/enrollments/${enrollmentId}`, { method: 'DELETE', body: {} }),
     updateAdminConfigs: (items) => request('/api/admin/configs', { method: 'PUT', body: { items } }),
     getAdminAudit: () => request('/api/admin/audit'),
     getAdminAccounts: () => request('/api/admin/accounts'),

@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { createApiClient, createSessionStore, routeForSession } from '@kexu/client-core';
 import AppShell from './components/AppShell.jsx';
 import { LoginPage, ChangePasswordPage } from './pages/AuthPages.jsx';
-import { ProfilePage, SchedulePage } from './pages/StudentPages.jsx';
-import { PreferencePage, PreferenceResultPage } from './pages/PreferencePages.jsx';
-import { AdminAccountsPage, AdminCoursesPage, AdminDashboardPage, AdminResourcesPage, AdminSchedulePage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
-import AdminPreferenceGroupsPage from './pages/AdminPreferenceGroupsPage.jsx';
+import { CoursesPage, CourseDetailPage, EnrollmentsPage, ProfilePage, SchedulePage } from './pages/StudentPages.jsx';
+import { AdminAccountsPage, AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSchedulePage, AdminSettingsPage, AdminStudentsPage } from './pages/AdminPages.jsx';
+import AdminEnrollmentGroupsPage from './pages/AdminEnrollmentGroupsPage.jsx';
 import { navigate, usePathname } from './runtime/browser.js';
 
 const sessionStore = createSessionStore(window.localStorage);
@@ -26,7 +25,6 @@ export default function App() {
   if (!session && pathname !== '/login') redirectPath = '/login';
   else if (session && pathname === '/login') redirectPath = routeForSession(session);
   else if (session?.must_change_password && pathname !== '/change-password') redirectPath = '/change-password';
-  else if (session && isAdmin && pathname === '/admin/enrollments') redirectPath = '/admin/groups';
   else if (session && !session.must_change_password && isAdmin && !pathname.startsWith('/admin') && pathname !== '/change-password') redirectPath = '/admin';
   else if (session && !session.must_change_password && pathname === '/admin/accounts' && session.user_type !== 'SUPER_ADMIN') redirectPath = '/admin';
   else if (session && !session.must_change_password && !isAdmin && pathname.startsWith('/admin')) redirectPath = '/courses';
@@ -65,13 +63,15 @@ export default function App() {
     else if (pathname === '/admin/resources') page = <AdminResourcesPage api={api} toast={toast} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
     else if (pathname === '/admin/accounts') page = <AdminAccountsPage api={api} toast={toast} />;
-    else if (pathname === '/admin/groups') page = <AdminPreferenceGroupsPage api={api} toast={toast} />;
+    else if (pathname === '/admin/groups') page = <AdminEnrollmentGroupsPage api={api} toast={toast} />;
+    else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} toast={toast} />;
     else page = <AdminDashboardPage api={api} />;
   } else {
-    if (pathname === '/enrollments') page = <PreferenceResultPage api={api} />;
+    if (pathname === '/enrollments') page = <EnrollmentsPage api={api} toast={toast} />;
+    else if (/^\/courses\/\d+$/.test(pathname)) page = <CourseDetailPage api={api} courseId={Number(pathname.split('/')[2])} toast={toast} />;
     else if (pathname === '/schedule') page = <SchedulePage api={api} />;
     else if (pathname === '/profile') page = <ProfilePage api={api} profile={profile} setProfile={setProfile} onLogout={logout} />;
-    else page = <PreferencePage api={api} toast={toast} />;
+    else page = <CoursesPage api={api} toast={toast} />;
   }
 
   return <><AppShell session={session} pathname={pathname} profile={profile} onLogout={logout}>{page}</AppShell>{notice ? <div className={`toast ${notice.tone}`}>{notice.message}</div> : null}</>;

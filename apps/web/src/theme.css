@@ -683,3 +683,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .group-option-grid, .group-stat-row, .allocation-summary { grid-template-columns: repeat(2,1fr); }
   .submitted-preferences li { grid-template-columns: 32px 82px 1fr; }
 }
+
+.roster-export-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.roster-export-actions > button { min-height: 42px; }
+.enrollment-withdraw { position: static; justify-self: start; margin-top: 6px; padding: 7px 12px; border: 1px solid #f1c7c4; border-radius: 8px; background: #fff7f6; color: #b42318; cursor: pointer; }
+@media (max-width: 640px) {
+  .roster-export-actions { flex-direction: column; }
+  .roster-export-actions > button { width: 100%; }
+}

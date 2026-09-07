@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * 选课排课后端：零依赖 Node http 服务，实现志愿填报、统一分配与排课核心逻辑。
- * - 志愿：学生按教学组提交 2–3 个有顺序的项目志愿，不按提交先后抢占名额。
- * - 分配：同一随机种子产生可复现结果，逐志愿分配并严格限制项目容量。
+ * 选课排课后端：自主报名，成功即占用名额，学生可以不参加。
+ * - 范围：课程年级/班级限制、教学组、开放时间由管理端控制。
+ * - 一致性：单实例请求隔离、学生锁、课程锁及 MySQL 条件扣减。
  * - 冲突：教师 / 场地 / 学生时间 / 班额硬冲突校验。
  * 生产环境的持久化约束见 docs/schema.sql。
  */
@@ -12,14 +12,16 @@ const http = require('http');
 const fs = require('fs');
 const pathlib = require('path');
 const { URL } = require('url');
-const { db, nextId, initStore, save, refreshEnrollmentState, persistEnrollmentMutation } = require('./store');
+const { db, nextId, initStore, save, waitForSaves, refreshEnrollmentState, persistEnrollmentMutation } = require('./store');
+const { enrollmentPolicy, inEnrollmentScope, courseEnrollmentScope } = require('./enrollment-policy');
+const { createRequestGate } = require('./request-gate');
+const { buildEnrollmentRoster } = require('./enrollment-roster');
 const { hashPassword, verifyPassword, sign, verify } = require('./auth');
 const { code2Session } = require('./config');
 const { initRedis, rateLimit, getJson, setJson, invalidate, withScheduleLock, withStudentLock } = require('./redis');
 const scheduleConflicts = require('./schedule-conflicts');
-const { allocatePreferences } = require('./preference-allocation');
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_CONSOLE_FILE = pathlib.resolve(__dirname, '..', '..', 'admin-console.html');
 const WEB_DIST_DIR = pathlib.resolve(process.env.WEB_DIST_DIR || pathlib.join(__dirname, '..', '..', 'apps', 'web', 'dist'));
 const WEB_INDEX_FILE = pathlib.join(WEB_DIST_DIR, 'index.html');
@@ -130,8 +132,9 @@ function lock(key) {
   const prev = locks.get(key) || Promise.resolve();
   let release;
   const next = new Promise((r) => { release = r; });
-  locks.set(key, prev.then(() => next));
-  return prev.then(() => release);
+  const tail = prev.then(() => next);
+  locks.set(key, tail);
+  return prev.then(() => () => { release(); if (locks.get(key) === tail) locks.delete(key); });
 }
 
 /* ----------------------------- 鉴权 ----------------------------- */
@@ -192,13 +195,19 @@ function courseToView(course, student) {
     id: course.id, name: course.name, category: (db.course_categories.find((c) => c.id === course.category_id) || {}).name || '',
     description: course.description, cover_url: course.cover_url, capacity: course.capacity, active_count: course.active_count,
     remaining, status: course.status, teachers, schedules,
-    allowed_scope: course.allowed_scope_json ? JSON.parse(course.allowed_scope_json) : null,
+    allowed_scope: courseEnrollmentScope(db, course),
     enrolled, version: course.version,
+    enroll_start_at: course.enroll_start_at, enroll_end_at: course.enroll_end_at,
+    course_start_date: course.course_start_date, course_end_date: course.course_end_date,
+    ...(student ? { eligibility: enrollmentPolicy(db, student, course) } : {}),
   };
 }
 
 function groupCourseIds(groupId) {
-  return db.teaching_group_courses.filter((item) => item.group_id === Number(groupId)).map((item) => item.course_id);
+  return db.courses.filter((course) => {
+    const scope = courseEnrollmentScope(db, course);
+    return scope.type === 'groups' && scope.groups?.map(Number).includes(Number(groupId));
+  }).map((course) => course.id);
 }
 
 function groupClassIds(groupId) {
@@ -231,6 +240,7 @@ function teachingGroupView(group) {
     submitted_count: submitted,
     unsubmitted_count: Math.max(0, students.length - submitted),
     total_capacity: courseIds.reduce((total, id) => total + Number(getCourse(id)?.capacity || 0), 0),
+    enrolled_count: students.filter((student) => db.enrollments.some((item) => item.student_id === student.id && item.status === 'ENROLLED' && courseIds.includes(item.course_id))).length,
   };
 }
 
@@ -301,27 +311,17 @@ async function doEnroll(req, res, body, courseId, source, actorUser) {
       if (source === 'STAFF' && ['FINISHED', 'ARCHIVED'].includes(course.status)) return fail(res, 'COURSE_NOT_OPEN', '课程已结束或归档，无法代报名');
 
       const idemKey = body.idempotency_key || `auto-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (typeof idemKey !== 'string' || idemKey.length > 128) return fail(res, 'INVALID_IDEMPOTENCY_KEY', '请求标识无效', 400);
       const idemRec = db.enrollments.find((item) => item.student_id === student.id && item.idempotency_key === idemKey && item.status === 'ENROLLED');
-      if (idemRec) return ok(res, { enrollment: idemRec, course: courseToView(course, student), idempotent: true });
+      if (idemRec) {
+        if (idemRec.course_id !== course.id) return fail(res, 'IDEMPOTENCY_CONFLICT', '本次请求标识已经用于其他课程', 409);
+        return ok(res, { enrollment: idemRec, course: courseToView(course, student), idempotent: true });
+      }
+      if (db.enrollments.some((item) => item.idempotency_key === idemKey && (item.student_id !== student.id || item.course_id !== course.id))) return fail(res, 'IDEMPOTENCY_CONFLICT', '请求标识已被使用，请刷新后重试', 409);
       const existing = db.enrollments.find((item) => item.student_id === student.id && item.course_id === course.id);
       if (existing && existing.status === 'ENROLLED') return fail(res, 'ALREADY_ENROLLED', '你已报名该课程');
-      if (source === 'STUDENT' && !studentMatchesScope(student, course.allowed_scope_json)) return fail(res, 'STUDENT_SCOPE_MISMATCH', '该课程不在你的可报名范围内');
-
-      const maxActive = parseInt(getConfig('student.max_active_courses', '2'), 10);
-      if (studentEnrollments(student.id, 'ENROLLED').length >= maxActive) return fail(res, 'STUDENT_LIMIT_REACHED', `每名学生最多报名 ${maxActive} 门课程`);
-      const maxPerCat = parseInt(getConfig('student.max_courses_per_category', '0'), 10);
-      if (maxPerCat > 0) {
-        const categoryCount = studentEnrollments(student.id, 'ENROLLED').filter((item) => getCourse(item.course_id)?.category_id === course.category_id).length;
-        if (categoryCount >= maxPerCat) return fail(res, 'STUDENT_LIMIT_REACHED', `该分类最多报名 ${maxPerCat} 门课程`);
-      }
-
-      const busy = studentBusySlots(student.id);
-      const conflictSlot = courseSchedules(course.id).find((slot) => slot.weekday && slot.period && busy.has(`${slot.weekday}-${slot.period}`));
-      if (conflictSlot) {
-        const clash = db.enrollments.find((item) => item.student_id === student.id && item.status === 'ENROLLED' && courseSchedules(item.course_id).some((slot) => slot.weekday === conflictSlot.weekday && slot.period === conflictSlot.period));
-        return fail(res, 'STUDENT_TIME_CONFLICT', `与“${clash ? getCourse(clash.course_id).name : '其他课程'}”上课时间冲突`);
-      }
-      if (course.active_count >= course.capacity) return fail(res, 'COURSE_FULL', '课程名额已满');
+      const eligibility = enrollmentPolicy(db, student, course, { staff: source === 'STAFF' });
+      if (!eligibility.eligible) return fail(res, eligibility.code, eligibility.reason, 409);
 
       const now = new Date().toISOString();
       const rec = existing ? { ...existing } : { id: nextId('enrollments'), student_id: student.id, course_id: course.id };
@@ -338,7 +338,8 @@ async function doEnroll(req, res, body, courseId, source, actorUser) {
     });
   } catch (error) {
     if (error.code === 'BUSY_RETRY') return fail(res, error.code, error.message, 429);
-    if (error.code === 'COURSE_FULL') return fail(res, error.code, error.message, 409);
+    if (['COURSE_FULL', 'ALREADY_ENROLLED'].includes(error.code)) return fail(res, error.code, error.message, 409);
+    if (error.code === 'ER_DUP_ENTRY') return fail(res, 'IDEMPOTENCY_CONFLICT', '请求标识已被使用，请刷新后重试', 409);
     console.error('[报名] 写入失败:', error.message);
     return fail(res, 'ENROLL_FAILED', '报名没有完成，请重试', 500);
   } finally {
@@ -357,6 +358,10 @@ async function doWithdraw(req, res, courseId, source, actorUser, body) {
       if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
       const existing = db.enrollments.find((item) => item.student_id === student.id && item.course_id === course.id);
       if (!existing || existing.status !== 'ENROLLED') return ok(res, { status: existing ? existing.status : 'NONE', released: 0 });
+      if (source === 'STUDENT') {
+        if (course.status !== 'OPEN' || (course.enroll_end_at && Date.now() >= new Date(course.enroll_end_at).getTime())) return fail(res, 'WITHDRAW_CLOSED', '报名已停止，如需退课请联系老师', 409);
+        if (course.course_start_date && Date.now() >= new Date(`${course.course_start_date}T00:00:00+08:00`).getTime() && getConfig('enrollment.allow_withdraw_after_start', 'false') !== 'true') return fail(res, 'WITHDRAW_CLOSED', '课程已经开始，如需退课请联系老师', 409);
+      }
       const now = new Date().toISOString();
       const rec = { ...existing, status: 'CANCELLED', cancelled_at: now, operated_by: actorUser ? actorUser.id : null, reason: body?.reason || (source === 'STUDENT' ? '学生主动退课' : '管理员代退课') };
       const auditLog = { id: nextId('audit_logs'), actor_id: actorUser ? actorUser.id : student.user_id, action: source === 'STUDENT' ? 'WITHDRAW' : 'STAFF_WITHDRAW', target_type: 'course', target_id: course.id, before_json: null, after_json: JSON.stringify({ student_id: student.id }), ip: requestIp(req), created_at: now };
@@ -380,7 +385,25 @@ async function doWithdraw(req, res, courseId, source, actorUser, body) {
 
 /* ----------------------------- 路由 ----------------------------- */
 
+const requestGate = createRequestGate();
 const server = http.createServer(async (req, res) => {
+  let release;
+  let exclusive = false;
+  try {
+    await handleRequest(req, res, async () => {
+      // 现有存储使用内存镜像和整库保存，只支持一个应用实例。
+      exclusive = !/^\/api\/courses\/\d+\/(enroll|enrollment)(?:\?|$)/.test(req.url);
+      release = await requestGate(exclusive);
+    });
+  } catch (error) {
+    console.error('[请求失败]', error.message);
+    if (!res.writableEnded) fail(res, error.code === 'BUSY_RETRY' ? error.code : 'INTERNAL_ERROR', error.code === 'BUSY_RETRY' ? error.message : '操作没有完成，请稍后重试', error.code === 'BUSY_RETRY' ? 429 : 500);
+  } finally {
+    if (exclusive) await waitForSaves();
+    release?.();
+  }
+});
+async function handleRequest(req, res, acquireWrite) {
   if (req.method === 'OPTIONS') return send(res, 204, '');
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname;
@@ -398,6 +421,7 @@ const server = http.createServer(async (req, res) => {
     const loginIdentity = String(body.username || 'unknown').trim().toLowerCase();
     if (!await enforceRateLimit(res, `login:${ip}:${loginIdentity}`, parseInt(process.env.RATE_LIMIT_LOGIN_PER_ACCOUNT_PER_MINUTE || '10', 10), 60)) return;
   }
+  if (['POST', 'PUT', 'DELETE'].includes(method) && path !== '/api/auth/login') await acquireWrite();
 
   const requireUser = () => { if (!user) { fail(res, 'UNAUTHORIZED', '请先登录', 401); return false; } return true; };
   const requireStaff = () => { if (!user || !['STAFF', 'SUPER_ADMIN'].includes(user.user_type)) { fail(res, 'FORBIDDEN', '无权访问', 403); return false; } return true; };
@@ -479,15 +503,21 @@ const server = http.createServer(async (req, res) => {
     if (!verifyPassword(body.old_password || '', user.password_hash)) return fail(res, 'INVALID_OLD_PASSWORD', '原密码不正确', 400);
     if (!body.new_password || body.new_password.length < parseInt(getConfig('security.password_min_length', '8'), 10)) return fail(res, 'WEAK_PASSWORD', `密码至少 ${getConfig('security.password_min_length', '8')} 位`);
     if (body.new_password !== body.confirm_password) return fail(res, 'PASSWORD_MISMATCH', '两次输入密码不一致');
+    const previous = { ...user };
     user.password_hash = hashPassword(body.new_password);
     user.must_change_password = false;
     user.updated_at = new Date().toISOString();
-    save();
+    try { await save({ strict: true }); }
+    catch (error) { Object.assign(user, previous); throw error; }
     audit(user.id, 'CHANGE_PASSWORD', 'user', user.id, null, null, ip);
     return ok(res, { changed: true });
   }
 
-  // 学生端：体育选项课采用志愿填报，统一分配后再发布结果。
+  // 拦截旧版本写入口，防止模拟发布覆盖当前抢课名单。
+  if ((path === '/api/preferences/current' && method === 'PUT') || (/^\/api\/admin\/teaching-groups\/\d+\/(simulate|publish)$/.test(path) && method === 'POST')) {
+    return fail(res, 'ENROLLMENT_MODE_ENABLED', '当前采用自主报名，志愿分配已停用', 410);
+  }
+  // 历史志愿保留为只读资料。
   if (path === '/api/preferences/current' && method === 'GET') {
     if (!requireUser()) return;
     const student = getStudentByUser(user.id);
@@ -495,34 +525,7 @@ const server = http.createServer(async (req, res) => {
     return ok(res, currentPreferenceData(student));
   }
 
-  if (path === '/api/preferences/current' && method === 'PUT') {
-    if (!requireUser()) return;
-    const student = getStudentByUser(user.id);
-    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生资料不存在', 404);
-    const group = groupForStudent(student);
-    if (!group) return fail(res, 'GROUP_NOT_ASSIGNED', '你还没有加入体育选项课教学组', 400);
-    if (group.status !== 'OPEN') return fail(res, 'PREFERENCE_NOT_OPEN', group.status === 'PUBLISHED' ? '分配结果已经发布，不能再修改志愿' : '当前不在志愿填报时间', 409);
-    const choices = Array.isArray(body.course_ids) ? body.course_ids.map(Number) : [];
-    if (choices.length !== Number(group.preference_count)) return fail(res, 'INVALID_PREFERENCE_COUNT', `请完整填写 ${group.preference_count} 个志愿`, 400);
-    if (new Set(choices).size !== choices.length) return fail(res, 'DUPLICATE_PREFERENCE', '每个志愿必须选择不同项目', 400);
-    const allowed = new Set(groupCourseIds(group.id));
-    if (choices.some((id) => !allowed.has(id))) return fail(res, 'INVALID_PREFERENCE', '志愿项目不属于你的教学组', 400);
-    const now = new Date().toISOString();
-    let submission = db.preference_submissions.find((item) => item.group_id === group.id && item.student_id === student.id);
-    if (!submission) {
-      submission = { id: nextId('preference_submissions'), group_id: group.id, student_id: student.id, status: 'SUBMITTED', submitted_at: now, updated_at: now };
-      db.preference_submissions.push(submission);
-    } else {
-      submission.status = 'SUBMITTED'; submission.updated_at = now;
-    }
-    db.preference_choices = db.preference_choices.filter((item) => item.submission_id !== submission.id);
-    choices.forEach((courseId, index) => db.preference_choices.push({ submission_id: submission.id, rank: index + 1, course_id: courseId }));
-    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'SUBMIT_PREFERENCES', target_type: 'teaching_group', target_id: group.id, before_json: null, after_json: JSON.stringify({ choices }), ip, created_at: now });
-    await save();
-    return ok(res, currentPreferenceData(student));
-  }
-
-  // 旧课程浏览接口保留给历史数据查看，但学生即时抢课写入已关闭。
+  // 课程缓存只保存公共信息，学生资格在读取时单独计算。
   if (path === '/api/courses' && method === 'GET') {
     const student = getStudentByUser(user.id);
     if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生资料不存在', 404);
@@ -535,16 +538,17 @@ const server = http.createServer(async (req, res) => {
       await setJson('open-courses', cached, 5);
     }
     const enrolledIds = new Set(studentEnrollments(student.id, 'ENROLLED').map((item) => item.course_id));
-    let list = cached.items.filter((course) => studentMatchesScope(student, course.allowed_scope));
+    let list = cached.items.filter((course) => inEnrollmentScope(db, student, getCourse(course.id)));
     if (category) list = list.filter((course) => course.category === category);
     if (q) list = list.filter((course) => `${course.name}${course.teachers.join('')}`.toLowerCase().includes(q.toLowerCase()));
-    return ok(res, { items: list.map((course) => ({ ...course, enrolled: enrolledIds.has(course.id) })), categories: cached.categories });
+    return ok(res, { items: list.map((course) => ({ ...course, enrolled: enrolledIds.has(course.id), eligibility: enrollmentPolicy(db, student, getCourse(course.id)) })), categories: [...new Set(list.map((course) => course.category).filter(Boolean))] });
   }
 
   if (/^\/api\/courses\/\d+$/.test(path) && method === 'GET') {
     const course = getCourse(path.split('/')[3]);
     if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
     const student = getStudentByUser(user.id);
+    if (!inEnrollmentScope(db, student, course)) return fail(res, 'FORBIDDEN', '该课程不在你的可报名范围内', 403);
     return ok(res, { course: courseToView(course, student) });
   }
 
@@ -553,47 +557,30 @@ const server = http.createServer(async (req, res) => {
     const course = getCourse(path.split('/')[3]);
     if (!course) return fail(res, 'NOT_FOUND', '课程不存在', 404);
     const student = getStudentByUser(user.id);
-    const enrolled = db.enrollments.find((e) => e.student_id === student.id && e.course_id === course.id && e.status === 'ENROLLED');
-    if (enrolled) return ok(res, { eligible: false, already_enrolled: true, code: 'ALREADY_ENROLLED', reason: '你已报名该课程' });
-    if (course.status !== 'OPEN') return ok(res, { eligible: false, already_enrolled: false, code: 'COURSE_NOT_OPEN', reason: '课程未开放报名' });
-    if (!studentMatchesScope(student, course.allowed_scope_json)) return ok(res, { eligible: false, already_enrolled: false, code: 'STUDENT_SCOPE_MISMATCH', reason: '该课程不在你的可报名范围内' });
-    const maxActive = parseInt(getConfig('student.max_active_courses', '2'), 10);
-    const activeCount = studentEnrollments(student.id, 'ENROLLED').length;
-    if (activeCount >= maxActive) return ok(res, { eligible: false, already_enrolled: false, code: 'STUDENT_LIMIT_REACHED', reason: `每名学生最多报名 ${maxActive} 门课程` });
-    const busy = studentBusySlots(student.id);
-    const conflictSlot = courseSchedules(course.id).find((sc) => sc.weekday && sc.period && busy.has(`${sc.weekday}-${sc.period}`));
-    if (conflictSlot) {
-      const clash = db.enrollments.find((e) => e.student_id === student.id && e.status === 'ENROLLED' && courseSchedules(e.course_id).some((s) => s.weekday === conflictSlot.weekday && s.period === conflictSlot.period));
-      const clashName = clash ? getCourse(clash.course_id).name : '其他课程';
-      return ok(res, { eligible: false, already_enrolled: false, code: 'STUDENT_TIME_CONFLICT', reason: `与“${clashName}”上课时间冲突` });
-    }
-    if (course.active_count >= course.capacity) return ok(res, { eligible: false, already_enrolled: false, code: 'COURSE_FULL', reason: '课程名额已满' });
-    return ok(res, { eligible: true, already_enrolled: false });
+    return ok(res, enrollmentPolicy(db, student, course));
   }
 
   if (/^\/api\/courses\/\d+\/enroll$/.test(path) && method === 'POST') {
-    return fail(res, 'PREFERENCE_MODE_ENABLED', '当前采用志愿填报，不再支持即时抢课', 410);
+    return doEnroll(req, res, body, Number(path.split('/')[3]), 'STUDENT', user);
   }
 
   if (/^\/api\/courses\/\d+\/enrollment$/.test(path) && method === 'DELETE') {
-    return fail(res, 'PREFERENCE_MODE_ENABLED', '体育选项课由学校统一分配，如需调整请联系老师', 410);
+    return doWithdraw(req, res, Number(path.split('/')[3]), 'STUDENT', user, body);
   }
 
   if (path === '/api/me/enrollments' && method === 'GET') {
     const student = getStudentByUser(user.id);
-    const group = groupForStudent(student);
-    const groupCourses = new Set(group ? groupCourseIds(group.id) : []);
-    const currentEnrollments = group ? studentEnrollments(student.id, 'ENROLLED').filter((item) => item.source === 'ALLOCATION' && groupCourses.has(item.course_id) && group.status === 'PUBLISHED') : [];
+    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生资料不存在', 404);
+    const currentEnrollments = studentEnrollments(student.id, 'ENROLLED').filter((item) => getCourse(item.course_id));
     const items = currentEnrollments.map((e) => ({ ...courseToView(getCourse(e.course_id), student), enrolled_at: e.enrolled_at }));
-    const history = db.enrollments.filter((e) => e.student_id === student.id && e.status !== 'ENROLLED').map((e) => ({ course_id: e.course_id, name: getCourse(e.course_id).name, status: e.status, cancelled_at: e.cancelled_at }));
+    const history = db.enrollments.filter((e) => e.student_id === student.id && e.status !== 'ENROLLED').map((e) => ({ course_id: e.course_id, name: getCourse(e.course_id)?.name || '历史课程', status: e.status, cancelled_at: e.cancelled_at }));
     return ok(res, { items, history, max_active: parseInt(getConfig('student.max_active_courses', '2'), 10) });
   }
 
   if (path === '/api/me/schedule' && method === 'GET') {
     const student = getStudentByUser(user.id);
-    const group = groupForStudent(student);
-    const groupCourses = new Set(group ? groupCourseIds(group.id) : []);
-    const items = (group && group.status === 'PUBLISHED' ? studentEnrollments(student.id, 'ENROLLED').filter((item) => item.source === 'ALLOCATION' && groupCourses.has(item.course_id)) : []).map((e) => {
+    if (!student) return fail(res, 'STUDENT_NOT_FOUND', '学生资料不存在', 404);
+    const items = studentEnrollments(student.id, 'ENROLLED').filter((item) => getCourse(item.course_id)).map((e) => {
       const c = getCourse(e.course_id);
       return { course_id: c.id, name: c.name, teachers: courseTeachers(c.id), schedules: courseSchedules(c.id) };
     });
@@ -637,6 +624,7 @@ const server = http.createServer(async (req, res) => {
 
     return ok(res, {
       students: db.students.length, staff: db.staff.length, open_courses: openCourses.length, total_courses: db.courses.length,
+      enrolled_students: new Set(db.enrollments.filter((item) => item.status === 'ENROLLED').map((item) => item.student_id)).size,
       active_enrollments: db.enrollments.filter((e) => e.status === 'ENROLLED').length, remaining_seats: seat,
       full_courses: openCourses.filter((c) => c.active_count >= c.capacity).length,
       draft_courses: db.courses.filter((c) => c.status === 'DRAFT').length,
@@ -663,6 +651,7 @@ const server = http.createServer(async (req, res) => {
       time_slots: db.time_slots.map((t) => ({ id: t.id, name: t.name, weekday: t.weekday, period: t.period })),
       categories: db.course_categories.map((c) => ({ id: c.id, name: c.name })),
       grades: db.grades.map((g) => ({ id: g.id, name: g.name })),
+      teaching_groups: db.teaching_groups.filter((g) => g.status !== 'ARCHIVED').map((g) => ({ id: g.id, name: g.name })),
       classes: db.classes.map((c) => ({ id: c.id, name: c.name, grade_id: c.grade_id })),
     });
   }
@@ -679,18 +668,13 @@ const server = http.createServer(async (req, res) => {
     const gradeId = Number(body.grade_id);
     const classIds = [...new Set((Array.isArray(body.class_ids) ? body.class_ids : []).map(Number))];
     const courseIds = [...new Set((Array.isArray(body.course_ids) ? body.course_ids : []).map(Number))];
-    const preferenceCount = Number(body.preference_count || 2);
+    const preferenceCount = 2; // 保留旧库字段，抢课模式不使用志愿数。
     if (!name || name.length > 128) return fail(res, 'INVALID_GROUP_NAME', '教学组名称不能为空且不能超过 128 个字符', 400);
     if (!db.grades.some((item) => item.id === gradeId)) return fail(res, 'INVALID_GRADE', '请选择有效年级', 400);
-    if (classIds.length < 3 || classIds.length > 4) return fail(res, 'INVALID_GROUP_CLASSES', '每个教学组请选择 3 至 4 个班级', 400);
+    if (!classIds.length) return fail(res, 'INVALID_GROUP_CLASSES', '请至少选择一个班级', 400);
     if (classIds.some((id) => !db.classes.some((item) => item.id === id && item.grade_id === gradeId))) return fail(res, 'INVALID_GROUP_CLASSES', '所选班级必须属于同一年级', 400);
-    const occupiedClass = classIds.find((id) => db.teaching_group_classes.some((item) => item.class_id === id && db.teaching_groups.some((group) => group.id === item.group_id && group.status !== 'ARCHIVED')));
-    if (occupiedClass) return fail(res, 'CLASS_ALREADY_GROUPED', `${db.classes.find((item) => item.id === occupiedClass)?.name || '所选班级'} 已经属于其他教学组`, 409);
-    if (courseIds.length < 2) return fail(res, 'INVALID_GROUP_PROJECTS', '每个教学组至少选择 2 个体育项目', 400);
-    if (courseIds.some((id) => !getCourse(id) || getCourse(id).status === 'ARCHIVED')) return fail(res, 'INVALID_GROUP_PROJECTS', '包含无效或历史项目', 400);
-    const occupiedProject = courseIds.find((id) => db.teaching_group_courses.some((item) => item.course_id === id && db.teaching_groups.some((group) => group.id === item.group_id && group.status !== 'ARCHIVED')));
-    if (occupiedProject) return fail(res, 'PROJECT_ALREADY_GROUPED', `${getCourse(occupiedProject)?.name || '所选项目'} 已经用于其他教学组，请为不同教学组分别建立项目`, 409);
-    if (![2, 3].includes(preferenceCount) || preferenceCount > courseIds.length) return fail(res, 'INVALID_PREFERENCE_COUNT', '志愿数量只能是 2 或 3，且不能超过项目数', 400);
+    if (courseIds.length) return fail(res, 'INVALID_GROUP_PROJECTS', '请在课程管理中配置报名范围', 400);
+
     const now = new Date().toISOString();
     const group = { id: nextId('teaching_groups'), name, grade_id: gradeId, status: 'DRAFT', preference_count: preferenceCount, allow_adjustment: body.allow_adjustment ? 1 : 0, submission_start_at: null, submission_end_at: null, published_at: null, created_by: user.id, created_at: now, updated_at: now };
     db.teaching_groups.push(group);
@@ -703,28 +687,7 @@ const server = http.createServer(async (req, res) => {
 
   if (/^\/api\/admin\/teaching-groups\/\d+\/(open|close)$/.test(path) && method === 'POST') {
     if (!requireStaff()) return;
-    const parts = path.split('/');
-    const group = db.teaching_groups.find((item) => item.id === Number(parts[4]));
-    const action = parts[5];
-    if (!group) return fail(res, 'GROUP_NOT_FOUND', '教学组不存在', 404);
-    if (action === 'open' && !['DRAFT', 'CLOSED', 'ALLOCATED'].includes(group.status)) return fail(res, 'INVALID_GROUP_STATUS', '当前状态不能开放填报', 409);
-    if (action === 'close' && group.status !== 'OPEN') return fail(res, 'INVALID_GROUP_STATUS', '当前教学组未开放填报', 409);
-    if (action === 'open') {
-      const projects = groupCourseIds(group.id).map((id) => getCourse(id)).filter(Boolean);
-      if (projects.some((project) => project.status !== 'OPEN')) return fail(res, 'GROUP_PROJECT_NOT_READY', '请先在项目管理中启用本组全部项目', 409);
-      if (projects.reduce((total, project) => total + Number(project.capacity || 0), 0) < groupStudents(group.id).length) return fail(res, 'GROUP_CAPACITY_SHORTAGE', '本组项目总名额少于学生人数，请先调整项目容量', 409);
-    }
-    const now = new Date().toISOString();
-    group.status = action === 'open' ? 'OPEN' : 'CLOSED';
-    if (action === 'open') {
-      group.submission_start_at = now;
-      db.allocation_runs.filter((item) => item.group_id === group.id && item.status === 'SIMULATED').forEach((item) => { item.status = 'SUPERSEDED'; });
-    }
-    else group.submission_end_at = now;
-    group.updated_at = now;
-    db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: action === 'open' ? 'OPEN_PREFERENCES' : 'CLOSE_PREFERENCES', target_type: 'teaching_group', target_id: group.id, before_json: null, after_json: JSON.stringify({ status: group.status }), ip, created_at: now });
-    await save();
-    return ok(res, { group: teachingGroupView(group) });
+    return fail(res, 'GROUP_SCOPE_ONLY', '教学组仅用于报名范围，请在课程管理中开放或停止报名', 410);
   }
 
   if (/^\/api\/admin\/teaching-groups\/\d+\/allocation$/.test(path) && method === 'GET') {
@@ -741,57 +704,6 @@ const server = http.createServer(async (req, res) => {
       const choices = submission ? db.preference_choices.filter((item) => item.submission_id === submission.id).sort((a, b) => a.rank - b.rank).map((item) => item.course_id) : [];
       return { ...student, class_name: db.classes.find((item) => item.id === student.class_id)?.name || '', submitted: Boolean(submission), choices };
     }), run: latestRun || null, results });
-  }
-
-  if (/^\/api\/admin\/teaching-groups\/\d+\/simulate$/.test(path) && method === 'POST') {
-    if (!requireStaff()) return;
-    const groupId = Number(path.split('/')[4]);
-    const release = await lock(`teaching-group:${groupId}`);
-    try {
-      const group = db.teaching_groups.find((item) => item.id === groupId);
-      if (!group) return fail(res, 'GROUP_NOT_FOUND', '教学组不存在', 404);
-      if (!['CLOSED', 'ALLOCATED'].includes(group.status)) return fail(res, 'PREFERENCES_STILL_OPEN', '请先停止志愿填报，再运行模拟分配', 409);
-      const submissions = db.preference_submissions.filter((item) => item.group_id === groupId && item.status === 'SUBMITTED');
-      if (!submissions.length) return fail(res, 'NO_PREFERENCES', '当前教学组还没有学生提交志愿', 409);
-      const students = submissions.map((submission) => ({ id: submission.student_id, choices: db.preference_choices.filter((item) => item.submission_id === submission.id).sort((a, b) => a.rank - b.rank).map((item) => item.course_id) }));
-      const courses = groupCourseIds(groupId).map((id) => getCourse(id)).filter(Boolean).map((course) => ({ id: course.id, capacity: course.capacity }));
-      const seed = String(body.seed || `group-${groupId}-${Date.now()}`).slice(0, 128);
-      const allocation = allocatePreferences({ students, courses, preferenceCount: group.preference_count, allowAdjustment: Boolean(group.allow_adjustment), seed });
-      db.allocation_runs.filter((item) => item.group_id === groupId && item.status === 'SIMULATED').forEach((item) => { item.status = 'SUPERSEDED'; });
-      const now = new Date().toISOString();
-      const run = { id: nextId('allocation_runs'), group_id: groupId, seed, status: 'SIMULATED', summary_json: JSON.stringify({ submitted: students.length, assigned: allocation.assignments.length, unassigned: allocation.unassigned.length, unsubmitted: groupStudents(groupId).length - students.length, remaining: allocation.remaining }), created_by: user.id, created_at: now, published_at: null };
-      db.allocation_runs.push(run);
-      allocation.assignments.forEach((item) => db.allocation_results.push({ id: nextId('allocation_results'), run_id: run.id, group_id: groupId, ...item, created_at: now }));
-      group.status = 'ALLOCATED'; group.updated_at = now;
-      db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'SIMULATE_ALLOCATION', target_type: 'teaching_group', target_id: groupId, before_json: null, after_json: run.summary_json, ip, created_at: now });
-      await save();
-      return ok(res, { run, summary: JSON.parse(run.summary_json), group: teachingGroupView(group) });
-    } finally { release(); }
-  }
-
-  if (/^\/api\/admin\/teaching-groups\/\d+\/publish$/.test(path) && method === 'POST') {
-    if (!requireStaff()) return;
-    const groupId = Number(path.split('/')[4]);
-    const release = await lock(`teaching-group:${groupId}`);
-    try {
-      const group = db.teaching_groups.find((item) => item.id === groupId);
-      if (!group) return fail(res, 'GROUP_NOT_FOUND', '教学组不存在', 404);
-      const run = db.allocation_runs.filter((item) => item.group_id === groupId && item.status === 'SIMULATED').sort((a, b) => b.id - a.id)[0];
-      if (!run) return fail(res, 'NO_SIMULATION', '请先运行模拟分配并检查结果', 409);
-      const summary = JSON.parse(run.summary_json || '{}');
-      if ((summary.unassigned || summary.unsubmitted) && !body.confirm_incomplete) return fail(res, 'INCOMPLETE_ALLOCATION', '仍有未提交或未分配学生，请确认后再发布', 409, summary);
-      const studentIds = new Set(groupStudents(groupId).map((item) => item.id));
-      const courseIds = new Set(groupCourseIds(groupId));
-      db.enrollments = db.enrollments.filter((item) => !(studentIds.has(item.student_id) && courseIds.has(item.course_id)));
-      const now = new Date().toISOString();
-      db.allocation_results.filter((item) => item.run_id === run.id).forEach((item) => db.enrollments.push({ id: nextId('enrollments'), student_id: item.student_id, course_id: item.course_id, status: 'ENROLLED', source: 'ALLOCATION', idempotency_key: `allocation-${run.id}-${item.student_id}`, enrolled_at: now, cancelled_at: null, operated_by: user.id, reason: item.allocation_type === 'ADJUSTED' ? '后台统一调剂' : `第${item.source_rank}志愿录取` }));
-      db.courses.forEach((course) => { course.active_count = db.enrollments.filter((item) => item.course_id === course.id && item.status === 'ENROLLED').length; });
-      run.status = 'PUBLISHED'; run.published_at = now;
-      group.status = 'PUBLISHED'; group.published_at = now; group.updated_at = now;
-      db.audit_logs.push({ id: nextId('audit_logs'), actor_id: user.id, action: 'PUBLISH_ALLOCATION', target_type: 'teaching_group', target_id: groupId, before_json: null, after_json: run.summary_json, ip, created_at: now });
-      await save();
-      return ok(res, { group: teachingGroupView(group), run });
-    } finally { release(); }
   }
 
   if (path === '/api/admin/accounts' && method === 'GET') {
@@ -971,12 +883,14 @@ const server = http.createServer(async (req, res) => {
 
   if (/^\/api\/admin\/courses\/\d+\/enrollments$/.test(path) && method === 'POST') {
     if (!requireStaff()) return;
-    return fail(res, 'PREFERENCE_MODE_ENABLED', '当前采用志愿统一分配，不能再手工代报名', 410);
+    return doEnroll(req, res, body, Number(path.split('/')[4]), 'STAFF', user);
   }
 
   if (/^\/api\/admin\/enrollments\/\d+$/.test(path) && method === 'DELETE') {
     if (!requireStaff()) return;
-    return fail(res, 'PREFERENCE_MODE_ENABLED', '当前采用志愿统一分配，已发布结果需要通过教学组重新处理', 410);
+    const record = db.enrollments.find((item) => item.id === Number(path.split('/')[4]));
+    if (!record) return fail(res, 'NOT_FOUND', '报名记录不存在', 404);
+    return doWithdraw(req, res, record.course_id, 'STAFF', user, { ...body, student_id: record.student_id });
   }
 
   if (path === '/api/admin/students' && method === 'GET') {
@@ -986,10 +900,35 @@ const server = http.createServer(async (req, res) => {
       const grade = db.grades.find((g) => g.id === s.grade_id);
       const cls = db.classes.find((c) => c.id === s.class_id);
       const u = db.users.find((x) => x.id === s.user_id);
-      return { id: s.id, student_no: s.student_no, name: s.name, grade: grade ? grade.name : '', class_name: cls ? cls.name : '', status: s.status, account_status: u ? u.status : 'NONE', enrolled_count: studentEnrollments(s.id, 'ENROLLED').length };
+      return { id: s.id, student_no: s.student_no, name: s.name, grade: grade ? grade.name : '', class_name: cls ? cls.name : '', status: s.status, account_status: u ? u.status : 'NONE', must_change_password: u ? Boolean(u.must_change_password) : null, enrolled_count: studentEnrollments(s.id, 'ENROLLED').length };
     });
     if (q) return ok(res, { items: items.filter((i) => `${i.student_no}${i.name}`.includes(q)) });
     return ok(res, { items });
+  }
+
+  if (/^\/api\/admin\/students\/\d+\/reset-password$/.test(path) && method === 'POST') {
+    if (!requireStaff()) return;
+    const student = getStudent(Number(path.split('/')[4]));
+    const account = student && db.users.find((item) => item.id === student.user_id && item.user_type === 'STUDENT');
+    if (!account) return fail(res, 'STUDENT_NOT_FOUND', '学生账号不存在', 404);
+    const password = String(getConfig('security.student_initial_password', '12345678'));
+    const minimum = Number(getConfig('security.password_min_length', '8'));
+    if (password.length < minimum || password.length > 128) return fail(res, 'INVALID_INITIAL_PASSWORD_CONFIG', '请先设置符合长度要求的学生统一初始密码', 400);
+    const before = { ...account };
+    const auditId = nextId('audit_logs');
+    account.password_hash = hashPassword(password);
+    account.must_change_password = true;
+    account.failed_login_count = 0;
+    account.locked_until = null;
+    account.updated_at = new Date().toISOString();
+    db.audit_logs.push({ id: auditId, actor_id: user.id, action: 'RESET_STUDENT_PASSWORD', target_type: 'student', target_id: student.id, before_json: null, after_json: JSON.stringify({ must_change_password: true }), ip, created_at: account.updated_at });
+    try { await save({ strict: true }); }
+    catch (error) {
+      Object.assign(account, before);
+      db.audit_logs = db.audit_logs.filter((item) => item.id !== auditId);
+      throw error;
+    }
+    return ok(res, { reset: true, must_change_password: true });
   }
 
   if (path === '/api/admin/students/import' && method === 'POST') {
@@ -1082,6 +1021,13 @@ const server = http.createServer(async (req, res) => {
     return ok(res, { created, updated, total: rows.length, credentials });
   }
 
+  if (path === '/api/admin/enrollment-roster' && method === 'GET') {
+    if (!requireStaff()) return;
+    const groupId = url.searchParams.has('group_id') ? Number(url.searchParams.get('group_id')) : null;
+    if (groupId !== null && !db.teaching_groups.some((group) => group.id === groupId)) return fail(res, 'GROUP_NOT_FOUND', '教学组不存在', 404);
+    return ok(res, buildEnrollmentRoster(db, groupId));
+  }
+
   if (path === '/api/admin/enrollments' && method === 'GET') {
     if (!requireStaff()) return;
     const status = url.searchParams.get('status') || 'ALL';
@@ -1110,6 +1056,12 @@ const server = http.createServer(async (req, res) => {
   if (path === '/api/admin/configs' && method === 'PUT') {
     if (!requireStaff()) return;
     const items = Array.isArray(body.items) ? body.items : [];
+    for (const item of items) {
+      const existing = db.system_configs.find((row) => row.config_key === item.key);
+      if (!existing) return fail(res, 'INVALID_CONFIG', '设置项不存在', 400);
+      if (existing.value_type === 'bool' && !['true', 'false'].includes(String(item.value))) return fail(res, 'INVALID_CONFIG', '请选择允许或不允许', 400);
+      if (existing.value_type === 'int' && (!Number.isSafeInteger(Number(item.value)) || Number(item.value) < (item.key === 'student.max_courses_per_category' ? 0 : 1))) return fail(res, 'INVALID_CONFIG', '数量设置必须是有效整数', 400);
+    }
     const initialPasswordItem = items.find((item) => item.key === 'security.student_initial_password');
     if (initialPasswordItem) {
       const passwordMinItem = items.find((item) => item.key === 'security.password_min_length');
@@ -1141,7 +1093,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   return fail(res, 'NOT_FOUND', '接口不存在', 404);
-});
+}
 
 /* ----------------------------- 课程保存（含冲突校验） ----------------------------- */
 
@@ -1151,8 +1103,8 @@ async function saveCourse(res, body, id, user, ip) {
   if (db.courses.some((course) => course.id !== Number(id) && course.name === name && course.status !== 'ARCHIVED')) {
     return fail(res, 'DUPLICATE_COURSE', '已经存在同名课程，请直接编辑原课程', 409);
   }
-  const capacity = parseInt(body.capacity, 10);
-  if (!capacity || capacity < 1) return fail(res, 'INVALID_PARAM', '课程容量必须为正整数', 400);
+  const capacity = Number(body.capacity);
+  if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 100000) return fail(res, 'INVALID_PARAM', '课程容量必须为 1 至 100000 的整数', 400);
   const categoryId = Number(body.category_id);
   if (!db.course_categories.some((category) => category.id === categoryId)) return fail(res, 'INVALID_CATEGORY', '请选择有效的课程分类', 400);
   const teachers = Array.isArray(body.teachers) ? body.teachers.map(Number).filter(Boolean) : (body.teacher_id ? [Number(body.teacher_id)] : []);
@@ -1168,8 +1120,9 @@ async function saveCourse(res, body, id, user, ip) {
   if (!['DRAFT', 'OPEN', 'CLOSED', 'FINISHED', 'ARCHIVED'].includes(status)) return fail(res, 'INVALID_STATUS', '课程状态无效', 400);
   if (status === 'OPEN' && (!teachers.length || !schedules.length)) return fail(res, 'COURSE_NOT_READY', '开放报名的课程必须安排教师、上课时间和场地', 400);
 
-  const allowedScope = body.allowed_scope || { type: 'all' };
-  if (!['all', 'grades', 'classes'].includes(allowedScope.type)) return fail(res, 'INVALID_SCOPE', '可报名范围无效', 400);
+  const allowedScope = body.allowed_scope || (id && getCourse(id) ? courseEnrollmentScope(db, getCourse(id)) : { type: 'all' });
+  if (!['all', 'grades', 'classes', 'groups'].includes(allowedScope.type)) return fail(res, 'INVALID_SCOPE', '可报名范围无效', 400);
+  if (allowedScope.type === 'groups' && (!Array.isArray(allowedScope.groups) || !allowedScope.groups.length || allowedScope.groups.some((groupId) => !db.teaching_groups.some((group) => group.id === Number(groupId) && group.status !== 'ARCHIVED')))) return fail(res, 'INVALID_SCOPE', '请选择至少一个有效教学组', 400);
   if (allowedScope.type === 'grades' && (!(allowedScope.grades instanceof Array) || !allowedScope.grades.length || allowedScope.grades.some((gradeId) => !db.grades.some((grade) => grade.id === Number(gradeId))))) {
     return fail(res, 'INVALID_SCOPE', '请选择至少一个有效年级', 400);
   }
@@ -1178,6 +1131,14 @@ async function saveCourse(res, body, id, user, ip) {
   }
 
   const existing = id ? getCourse(id) : null;
+  const dates = {};
+  for (const key of ['enroll_start_at', 'enroll_end_at', 'course_start_date', 'course_end_date']) {
+    const value = body[key] === undefined ? existing?.[key] : body[key];
+    if (value && !Number.isFinite(new Date(value).getTime())) return fail(res, 'INVALID_TIME', '请填写有效日期和时间', 400);
+    dates[key] = value ? (key.startsWith('enroll_') ? new Date(value).toISOString() : value) : null;
+  }
+  if (dates.enroll_start_at && dates.enroll_end_at && new Date(dates.enroll_start_at) >= new Date(dates.enroll_end_at)) return fail(res, 'INVALID_TIME', '报名结束时间必须晚于开始时间', 400);
+  if (dates.course_start_date && dates.course_end_date && dates.course_start_date > dates.course_end_date) return fail(res, 'INVALID_TIME', '课程结束日期不能早于开始日期', 400);
   // 容量不可低于当前有效报名
   if (existing && capacity < existing.active_count) {
     return fail(res, 'CAPACITY_BELOW_ENROLLED', `容量(${capacity})低于当前已报名人数(${existing.active_count})`, 400);
@@ -1196,6 +1157,8 @@ async function saveCourse(res, body, id, user, ip) {
     existing.name = name; existing.category_id = categoryId; existing.capacity = capacity;
     existing.description = body.description || ''; existing.status = status;
     existing.allowed_scope_json = JSON.stringify(allowedScope);
+    db.teaching_group_courses = db.teaching_group_courses.filter((row) => row.course_id !== existing.id);
+    Object.assign(existing, dates);
     existing.version += 1; existing.updated_by = user.id; existing.updated_at = new Date().toISOString();
     // 重建老师与排课
     db.course_staff = db.course_staff.filter((x) => x.course_id !== existing.id);
@@ -1209,6 +1172,7 @@ async function saveCourse(res, body, id, user, ip) {
   const cid = nextId('courses');
   db.courses.push({ id: cid, name, category_id: categoryId, description: body.description || '', cover_url: '', capacity, active_count: 0, status, enroll_start_at: null, enroll_end_at: null, course_start_date: null, course_end_date: null, allowed_scope_json: JSON.stringify(allowedScope), version: 1, created_by: user.id, updated_by: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   teachers.forEach((tid) => db.course_staff.push({ course_id: cid, staff_id: tid, role: 'TEACHER' }));
+  Object.assign(getCourse(cid), dates);
   schedules.forEach((s) => db.course_schedules.push({ id: nextId('course_schedules'), course_id: cid, time_slot_id: s.time_slot_id, venue_id: s.venue_id }));
   save();
   audit(user.id, 'CREATE_COURSE', 'course', cid, null, { name }, ip);
@@ -1228,7 +1192,7 @@ function previewConflicts(id, body) {
 // 存储就绪后再监听端口，确保请求到达时内存数据已加载
 storeReady.then(() => {
   server.listen(PORT, () => {
-    console.log(`[选课排课] 后端已启动: http://localhost:${PORT}`);
+    console.log(`[选课排课] 后端已启动: http://localhost:${server.address().port}`);
     if (process.env.NODE_ENV !== 'production') console.log('[选课排课] 本地演示账号已加载，生产环境不会输出账号密码。');
   });
 }).catch((err) => {
