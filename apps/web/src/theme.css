@@ -691,3 +691,53 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .roster-export-actions { flex-direction: column; }
   .roster-export-actions > button { width: 100%; }
 }
+.student-list-panel { background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; }
+.student-list-heading { padding:20px 24px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.student-list-heading h2 { margin:0; font-size:18px; }
+.student-list-heading h2 span { margin-left:8px; color:#727780; font-size:14px; font-weight:400; }
+.student-directory button { cursor:pointer; }
+.student-directory button:disabled { cursor:default; opacity:.45; }
+.student-list-heading button,.student-result-line button,.student-row-action button { background:transparent; border:0; color:#245d93; padding:10px 0; font-size:13px; }
+.student-filters { display:grid; grid-template-columns:minmax(180px,2fr) repeat(3,minmax(120px,1fr)); gap:14px; padding:20px 24px 12px; }
+.student-filters label { display:grid; gap:7px; min-width:0; font-size:12px; color:#5b616a; }
+.student-filters input,.student-filters select { width:100%; min-width:0; min-height:42px; box-sizing:border-box; border:1px solid #dcdfe4; border-radius:8px; background:#fff; padding:9px 10px; font-size:14px; color:#222; }
+.student-result-line { padding:0 24px 14px; display:flex; align-items:center; justify-content:space-between; min-height:32px; color:#707781; font-size:12px; }
+.student-roster { width:100%; border-collapse:collapse; text-align:left; font-size:13px; }
+.student-roster th,.student-roster td { padding:15px 16px; border-bottom:1px solid #edf0f2; }
+.student-roster thead th { background:#f7f8fa; font-size:12px; color:#66707b; font-weight:500; white-space:nowrap; }
+.student-roster tbody th { font-weight:400; padding-left:24px; }
+.student-roster tbody th strong { display:block; font-size:14px; color:#24282e; }
+.student-roster small { display:block; margin-top:5px; color:#777f89; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.student-roster tbody tr:hover { background:#fafbfc; }
+.student-roster .student-row-action { text-align:right; padding-right:24px; white-space:nowrap; }
+.student-password-state { color:#52625a; font-size:12px; }
+.student-password-state.is-pending { color:#91600b; background:#fff7e6; border-radius:5px; padding:5px 7px; display:inline-block; }
+.student-pagination { padding:16px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; color:#69717b; }
+.student-pagination div { display:flex; gap:8px; }
+.student-pagination button,.student-reset-dialog footer button { border:1px solid #dce0e4; border-radius:8px; padding:10px 14px; background:#fff; color:#303942; }
+.student-reset-dialog { width:min(440px,calc(100vw - 40px)); max-height:calc(100dvh - 40px); box-sizing:border-box; padding:28px; border:0; border-radius:18px; box-shadow:0 24px 80px #0003; color:#24282e; }
+.student-reset-dialog::backdrop { background:#14202b66; }
+.student-reset-dialog h2 { margin:0 0 22px; font-size:20px; }
+.student-reset-dialog dl { background:#f6f7f9; padding:16px; border-radius:10px; }
+.student-reset-dialog dl div { display:flex; justify-content:space-between; gap:18px; margin:8px 0; font-size:13px; }
+.student-reset-dialog dt { color:#6e7580; flex-shrink:0; }
+.student-reset-dialog dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.student-reset-dialog p { font-size:14px; line-height:1.8; color:#626b75; }
+.student-reset-dialog footer { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+.student-reset-dialog footer button { width:auto; min-width:76px; white-space:nowrap; flex-shrink:0; }
+.student-reset-dialog footer .primary-button { width:auto; margin:0; background:#245d93; color:#fff; border-color:#245d93; }
+@media(max-width:900px) {
+  .student-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .student-roster thead { display:none; }
+  .student-roster,.student-roster tbody { display:block; }
+  .student-roster tbody tr { display:grid; grid-template-columns:1fr 1fr; margin:0 16px 14px; border:1px solid #e4e7eb; border-radius:12px; padding:16px; gap:14px 12px; }
+  .student-roster tbody th { grid-column:1/-1; padding:0 0 12px; border-bottom:1px solid #edf0f2; }
+  .student-roster td { display:flex; flex-direction:column; align-items:flex-start; gap:7px; padding:0; border:0; min-width:0; overflow-wrap:anywhere; }
+  .student-roster td[data-label]::before { content:attr(data-label); font-size:11px; color:#7a828d; }
+  .student-roster .student-row-action { grid-column:1/-1; padding:8px 0 0; align-items:flex-end; border-top:1px solid #edf0f2; }
+  .student-row-action button { min-height:40px; padding:8px 12px; border:1px solid #dce3eb; border-radius:7px; }
+  .student-list-heading { padding:18px 16px 0; }
+  .student-filters { padding:16px; gap:12px; }
+  .student-result-line { padding:0 16px 12px; }
+  .student-pagination { padding:12px 16px 20px; flex-wrap:wrap; }
+}

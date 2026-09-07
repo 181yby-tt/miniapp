@@ -3,7 +3,6 @@ import { makeIdempotencyKey } from '@kexu/client-core';
 import { Empty, ErrorState, Loading, Metric, PageHeader, StatusPill } from '../components/Common.jsx';
 import CourseEditor from '../components/admin/CourseEditor.jsx';
 import CourseImportPanel from '../components/admin/CourseImportPanel.jsx';
-import StudentImportPanel from '../components/admin/StudentImportPanel.jsx';
 import { formatDate } from '../runtime/browser.js';
 import { downloadEnrollmentRoster } from '../utils/enrollmentRosterExport.js';
 import { buildEnrollmentSummarySheet, ENROLLMENT_SUMMARY_COLUMNS, localDateStamp, summarizeEnrollmentCourses } from '../utils/enrollmentSummaryExport.js';
@@ -127,32 +126,7 @@ export function AdminSchedulePage({ api, toast }) {
   </>;
 }
 
-export function AdminStudentsPage({ api, toast }) {
-  const [query, setQuery] = useState('');
-  const [passwordState, setPasswordState] = useState('ALL');
-  const [resetting, setResetting] = useState(null);
-  const [grade, setGrade] = useState('ALL');
-  const [className, setClassName] = useState('ALL');
-  const [state, reload] = useAdminLoad(() => api.getAdminStudents(), []);
-  const source = state.data?.items || [];
-  const grades = [...new Set(source.map((item) => item.grade).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  const classes = [...new Set(source.filter((item) => grade === 'ALL' || item.grade === grade).map((item) => item.class_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  const items = source.filter((item) => (passwordState === 'ALL' || (passwordState === 'PENDING' ? item.must_change_password === true : item.must_change_password === false)) && (grade === 'ALL' || item.grade === grade) && (className === 'ALL' || item.class_name === className) && `${item.student_no}${item.name}${item.grade}${item.class_name}`.includes(query.trim()));
-  async function resetPassword(student) {
-    if (!window.confirm('重置“' + student.name + '（' + student.student_no + '）”的密码？将恢复为统一初始密码，下次登录需重新修改。')) return;
-    setResetting(student.id);
-    try { await api.resetStudentPassword(student.id); toast('已重置为统一初始密码'); reload(); }
-    catch (error) { toast(error.message, 'error'); }
-    finally { setResetting(null); }
-  }
-  const changeGrade = (value) => { setGrade(value); setClassName('ALL'); };
-  return <>
-    <PageHeader eyebrow="教务管理" title="学生" />
-    <StudentImportPanel api={api} toast={toast} onImported={reload} />
-    <div className="toolbar-line admin-list-toolbar"><div className="search-box"><span>搜</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索学号或姓名" /></div><select className="admin-filter-select" value={grade} onChange={(event) => changeGrade(event.target.value)}><option value="ALL">全部年级</option>{grades.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="admin-filter-select" value={className} onChange={(event) => setClassName(event.target.value)}><option value="ALL">全部班级</option>{classes.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="admin-filter-select" value={passwordState} onChange={(event) => setPasswordState(event.target.value)}><option value="ALL">全部改密状态</option><option value="PENDING">待修改初始密码</option><option value="CHANGED">已修改密码</option></select><span className="toolbar-count">{items.length} 名学生</span></div>
-    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={reload} /> : items.length ? <div className="responsive-table"><div className="table-row table-head"><span>姓名与登录账号</span><span>年级班级</span><span>已选课程</span><span>账号与密码</span></div>{items.map((student) => <div className="table-row" key={student.id}><span><strong>{student.name}</strong><small>登录账号：{student.student_no}</small></span><span>{student.grade} · {student.class_name}</span><span>{student.enrolled_count} 门</span><span><StatusPill status={student.account_status} /><small>{student.must_change_password === null ? '未关联账号' : student.must_change_password ? '待修改初始密码' : '已修改密码'}</small>{student.must_change_password !== null ? <button type="button" disabled={resetting !== null} onClick={() => resetPassword(student)}>{resetting === student.id ? '重置中…' : '重置密码'}</button> : null}</span></div>)}</div> : <Empty title="没有符合条件的学生" />}
-  </>;
-}
+export { default as AdminStudentsPage } from './AdminStudentsPage.jsx';
 
 export function AdminAccountsPage({ api, toast }) {
   const [form, setForm] = useState({ username: '', name: '', password: '', role: 'STAFF' });
