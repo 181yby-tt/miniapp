@@ -1,12 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { enrollmentPolicy } = require('../src/enrollment-policy');
+const { enrollmentPolicy, courseEnrollmentScope } = require('../src/enrollment-policy');
 const { createRequestGate } = require('../src/request-gate');
 const { withStudentLock } = require('../src/redis');
 const { enrollmentFixture } = require('./helpers/enrollment-fixture');
 
-test('教学组等价于班级范围，旧状态不参与报名判断', () => {
+test('旧教学组与班级范围转成年级范围，旧状态不参与报名判断', () => {
   const { db } = enrollmentFixture();
   const course = db.courses[0];
   for (const status of ['DRAFT', 'CLOSED', 'ALLOCATED', 'PUBLISHED']) {
@@ -20,6 +20,37 @@ test('教学组等价于班级范围，旧状态不参与报名判断', () => {
   assert.deepEqual(db.students.map((s) => enrollmentPolicy(db, s, course)), byGroup);
   course.allowed_scope_json = JSON.stringify({ type: 'groups', groups: [999] });
   assert.equal(enrollmentPolicy(db, db.students[0], course).code, 'STUDENT_SCOPE_MISMATCH');
+});
+
+test('同年级不同班级都可报名，其他年级被拒绝，班级资料保持不变', () => {
+  const { db } = enrollmentFixture();
+  const before = structuredClone(db.students);
+  const course = db.courses[0];
+  db.teaching_group_courses = [];
+  course.allowed_scope_json = JSON.stringify({ type: 'classes', classes: [1] });
+  assert.deepEqual(courseEnrollmentScope(db, course), { type: 'grades', grades: [1] });
+  assert.equal(enrollmentPolicy(db, db.students[0], course).eligible, true); // 初一 2 班
+  assert.equal(enrollmentPolicy(db, db.students[1], course).eligible, true); // 初一 3 班
+  assert.equal(enrollmentPolicy(db, db.students[63], course).code, 'STUDENT_SCOPE_MISMATCH');
+  assert.deepEqual(db.students, before);
+  course.allowed_scope_json = JSON.stringify({ type: 'classes', classes: [99999] });
+  assert.deepEqual(courseEnrollmentScope(db, course), { type: 'grades', grades: [] });
+  assert.equal(enrollmentPolicy(db, db.students[0], course).code, 'STUDENT_SCOPE_MISMATCH');
+});
+
+test('验收年级迁移后，旧课程年级与教学组交集仍可报名', () => {
+  const { db } = enrollmentFixture();
+  const { ensureFixedGrades } = require('../src/fixed-grades');
+  db.grades.push({ id: 90, name: '验收七年级' });
+  db.classes.filter((c) => c.grade_id === 1).forEach((c) => { c.grade_id = 90; });
+  db.students.filter((s) => s.grade_id === 1).forEach((s) => { s.grade_id = 90; });
+  const course = db.courses[0];
+  course.allowed_scope_json = JSON.stringify({ type: 'grades', grades: [90] });
+  let next = 90;
+  ensureFixedGrades(db, () => ++next);
+  assert.deepEqual(courseEnrollmentScope(db, course), { type: 'grades', grades: [1] });
+  assert.equal(enrollmentPolicy(db, db.students[0], course).eligible, true);
+  assert.equal(enrollmentPolicy(db, db.students[63], course).code, 'STUDENT_SCOPE_MISMATCH');
 });
 
 test('开始时间包含边界，结束时间不包含边界', () => {

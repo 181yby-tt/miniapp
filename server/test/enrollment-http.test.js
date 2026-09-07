@@ -40,6 +40,14 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
   const enroll = (student, course, key = `student-${student}-course-${course}`) => request(`/api/courses/${course}/enroll`, student, 'POST', { idempotency_key: key });
   const setConfig = (key, value) => request('/api/admin/configs', 1000, 'PUT', { items: [{ key, value }] });
   let winners;
+  await t.test('年级固定为初一初二初三，不能通过接口新增', async () => {
+    assert.deepEqual((await request('/api/admin/meta')).data.grades.map((g) => g.name), ['初一', '初二', '初三']);
+    assert.equal((await request('/api/admin/grades', 1, 'POST', { name: '初四' })).status, 403);
+    assert.equal((await request('/api/admin/grades', 1000, 'POST', { name: '初四' })).status, 410);
+    const before = (await request('/api/admin/students')).data.items;
+    assert.equal((await request('/api/admin/students/import', 1000, 'POST', { rows: [{ student_no: 'invalid-grade', name: '学生', grade: '初四', class_name: '1班' }] })).status, 400);
+    assert.deepEqual((await request('/api/admin/students')).data.items, before);
+  });
   await t.test('60 个学生同时争抢 20 个名额，只成功 20 个', async () => {
     const results = await Promise.all(Array.from({ length: 60 }, (_, i) => enroll(i + 1, 1)));
     winners = results.flatMap((result, i) => result.status === 200 ? [i + 1] : []);
@@ -125,18 +133,16 @@ test('自主报名 HTTP 回归：隔离数据、并发名额、规则、名单�
     assert.equal((await request('/api/admin/enrollment-roster', 1)).status, 403);
     assert.equal((await request('/api/admin/enrollment-roster?group_id=1')).data.student_count, 63);
   });
-  await t.test('报名范围可切换，教学组只是可复用的班级配置', async () => {
+  await t.test('只用年级限定报名，旧教学组创建入口关闭', async () => {
     const fixture = enrollmentFixture().db;
     const classId = fixture.students[0].class_id;
     const gradeId = fixture.students[0].grade_id;
-    const created = await request('/api/admin/teaching-groups', 1000, 'POST', { name: '单班范围', grade_id: gradeId, class_ids: [classId] });
-    assert.equal(created.status, 200);
-    const groupId = created.data.group.id;
-    assert.ok((await request('/api/admin/meta')).data.teaching_groups.some((g) => g.id === groupId));
+    assert.equal((await request('/api/admin/teaching-groups', 1000, 'POST', { name: '旧教学组', grade_id: gradeId, class_ids: [classId] })).status, 410);
     const course = (await request('/api/admin/courses')).data.items.find((c) => c.id === 5);
     const update = (allowed_scope) => request('/api/admin/courses/5', 1000, 'PUT', { ...course, teachers: course.teacher_ids, allowed_scope });
     assert.equal((await update({ type: 'groups', groups: [999999] })).code, 'INVALID_SCOPE');
-    assert.equal((await update({ type: 'groups', groups: [groupId] })).status, 200);
+    assert.equal((await update({ type: 'classes', classes: [classId] })).code, 'INVALID_SCOPE');
+    assert.equal((await update({ type: 'grades', grades: [gradeId] })).status, 200);
     assert.equal((await request('/api/courses/5/eligibility', 1)).data.code, 'ENROLLMENT_NOT_STARTED');
     assert.equal((await request('/api/courses/5/eligibility', 64)).data.code, 'STUDENT_SCOPE_MISMATCH');
     assert.equal((await update({ type: 'all' })).status, 200);

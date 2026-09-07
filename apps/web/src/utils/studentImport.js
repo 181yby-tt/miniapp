@@ -4,6 +4,7 @@ const HEADER_ALIASES = {
   grade: ['年级', 'grade'],
   class_name: ['班级', '行政班', 'classname', 'class'],
 };
+const GRADES = { 初一: '初一', 七年级: '初一', '7年级': '初一', 初二: '初二', 八年级: '初二', '8年级': '初二', 初三: '初三', 九年级: '初三', '9年级': '初三' };
 
 function text(value) {
   if (value === null || value === undefined) return '';
@@ -31,6 +32,7 @@ export function parseStudentSheet(sheetRows) {
     if (field && indexes[field] === undefined) indexes[field] = index;
   });
   if (indexes.name === undefined) throw new Error('Excel 需要包含“姓名”列');
+  if (indexes.grade === undefined) throw new Error('Excel 需要包含“年级”列，填写初一、初二或初三');
 
   const parsed = [];
   const errors = [];
@@ -43,12 +45,13 @@ export function parseStudentSheet(sheetRows) {
       row_number: rowNumber,
       student_no: studentNo,
       name: text(row[indexes.name]),
-      grade: indexes.grade === undefined ? '未分组' : text(row[indexes.grade]) || '未分组',
+      grade: GRADES[text(row[indexes.grade])] || '',
       class_name: indexes.class_name === undefined ? '未分组' : text(row[indexes.class_name]) || '未分组',
     };
 
     if (!studentNo) errors.push({ row_number: rowNumber, message: '学号为空' });
     else if (!item.name) errors.push({ row_number: rowNumber, message: '姓名为空' });
+    else if (!item.grade) errors.push({ row_number: rowNumber, message: '年级请填写初一、初二或初三' });
     else if (studentNo.length > 32) errors.push({ row_number: rowNumber, message: '学号不能超过 32 个字符' });
     else if (seen.has(studentNo)) errors.push({ row_number: rowNumber, message: `学号 ${studentNo} 在文件中重复` });
     else {

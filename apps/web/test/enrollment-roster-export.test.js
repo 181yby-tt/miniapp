@@ -17,6 +17,8 @@ test('真实 XLSX 包含已报名和未报名两个 sheet，学号保留前导�
   const unenrolled = workbook.find((sheet) => sheet.sheet === '未报名').data;
   assert.deepEqual(enrolled[0].slice(0, 4), ['学号', '姓名', '年级', '班级']);
   assert.equal(enrolled[1][0], '000123');
+  assert.equal(enrolled[1][2], '初一');
+  assert.equal(enrolled[1][3], '1班');
   assert.deepEqual(unenrolled[1], ['000124', '=测试姓名', '初一', '2班', '未报名']);
 });
 

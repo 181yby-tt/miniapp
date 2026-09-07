@@ -9,7 +9,7 @@ const adminDailyItems = [
   ['/admin', '工作台', 'dashboard'], ['/admin/students', '学生管理', 'users'], ['/admin/courses', '课程管理', 'courses'], ['/admin/enrollments', '报名管理', 'check'],
 ];
 const adminSystemItems = [
-  ['/admin/resources', '课程分类', 'database'], ['/admin/groups', '教学组设置', 'clipboard'], ['/admin/settings', '规则与记录', 'settings'],
+  ['/admin/resources', '课程分类', 'database'], ['/admin/settings', '规则与记录', 'settings'],
 ];
 
 const iconPaths = {

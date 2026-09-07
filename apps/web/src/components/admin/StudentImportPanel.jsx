@@ -80,7 +80,7 @@ export default function StudentImportPanel({ api, toast, onImported }) {
         <label><span>姓名</span><input value={manual.name} onChange={updateManual('name')} placeholder="必填，例如：张三" /></label>
         <label><span>年级</span><input value={manual.grade} onChange={updateManual('grade')} placeholder="例如：七年级" /></label>
         <label><span>班级</span><input value={manual.class_name} onChange={updateManual('class_name')} placeholder="例如：1 班" /></label>
-        <button className="primary-button" disabled={manualSaving || !manual.student_no.trim() || !manual.name.trim()}>{manualSaving ? '正在添加…' : '添加学生并生成账号'}</button>
+        <button className="primary-button" disabled={manualSaving || !manual.student_no.trim() || !manual.name.trim() || !manual.grade}>{manualSaving ? '正在添加…' : '添加学生并生成账号'}</button>
       </form>
     </section>
     <section className="student-import-card">
@@ -88,7 +88,7 @@ export default function StudentImportPanel({ api, toast, onImported }) {
     <label className="upload-button">选择学生 Excel<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} /></label>
     {preview ? <div className="import-preview">
       <div className="import-summary"><strong>{fileName}</strong><span>{preview.rows.length} 名可导入 · {preview.errors.length} 行需修正</span></div>
-      <div className="import-instructions"><strong>Excel 表头</strong><span>必填：学号、姓名</span><span>可选：年级、班级</span><small>不需要密码列；系统统一设置初始密码，学生首次登录必须修改。</small></div>
+      <div className="import-instructions"><strong>Excel 表头</strong><span>必填：学号、姓名、年级</span><span>班级按学生实际班级填写；年级使用初一、初二、初三</span><small>不需要密码列；系统统一设置初始密码，学生首次登录必须修改。</small></div>
       <label className="check-line"><input type="checkbox" checked={resetExisting} onChange={(event) => setResetExisting(event.target.checked)} /><span>把已存在学生的密码也重置为统一初始密码</span></label>
       {preview.errors.length ? <div className="import-errors"><strong>需要修正</strong>{preview.errors.slice(0, 8).map((error) => <span key={`${error.row_number}-${error.message}`}>第 {error.row_number} 行：{error.message}</span>)}</div> : null}
       <div className="import-sample"><span>导入预览</span>{preview.rows.slice(0, 5).map((student) => <span key={student.student_no}><strong>{student.student_no}</strong>{student.name} · {student.grade} · {student.class_name}</span>)}</div>

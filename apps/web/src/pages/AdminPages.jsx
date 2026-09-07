@@ -17,6 +17,7 @@ const CONFIG_TEXT = {
   'security.lock_minutes': { group: '账号安全', label: '输错密码后锁定多久？', help: '到时间后账号会自动恢复登录。', unit: '分钟' },
 };
 const AUDIT_TEXT = {
+  CREATE_GRADE: '创建年级',
   DELETE_STUDENTS: '按名单删除学生',
   CHANGE_PASSWORD: '修改密码', IMPORT_STUDENTS: '导入学生名单', CREATE_COURSE: '新建课程', UPDATE_COURSE: '修改课程资料',
   COURSE_OPEN: '开放课程报名', COURSE_CLOSE: '暂停课程报名', COURSE_ARCHIVE: '移入历史课程', UPDATE_CONFIG: '修改选课规则', CREATE_BASE_DATA: '新增基础数据',
@@ -25,7 +26,7 @@ const AUDIT_TEXT = {
   RESET_STUDENT_PASSWORD: '重置学生密码',
   CREATE_TEACHING_GROUP: '新建教学组', OPEN_PREFERENCES: '开放志愿填报', CLOSE_PREFERENCES: '停止志愿填报', SUBMIT_PREFERENCES: '提交志愿', SIMULATE_ALLOCATION: '运行模拟分配', PUBLISH_ALLOCATION: '发布分配结果',
 };
-const AUDIT_TARGET_TEXT = { course: '体育项目', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', teacher_account: '教师账号', venues: '场地', categories: '项目分类', 'time-slots': '时间段', teaching_group: '教学组' };
+const AUDIT_TARGET_TEXT = { grade: '年级', course: '体育项目', student: '学生', students: '学生名单', system: '系统规则', staff: '教师', teacher_account: '教师账号', venues: '场地', categories: '项目分类', 'time-slots': '时间段', teaching_group: '教学组' };
 
 function useAdminLoad(loader, dependencies = []) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
@@ -46,7 +47,7 @@ export function AdminDashboardPage({ api }) {
   return <>
     <PageHeader eyebrow="选课排课" title="工作台" />
     <section className="metric-grid admin-metrics"><Metric value={data.students} label="学生人数" /><Metric value={data.enrolled_students} label="已报名学生" /><Metric value={Math.max(0, data.students - data.enrolled_students)} label="未报名学生" /><Metric value={data.remaining_seats} label="剩余名额" tone="accent" /></section>
-    <div className="dashboard-grid"><section className="paper-card"><div className="card-title"><h2>报名情况</h2></div><div className="signal-grid"><div><strong>{data.open_courses}</strong><span>开放课程</span></div><div><strong>{data.full_courses}</strong><span>已满课程</span></div><div><strong>{data.active_enrollments}</strong><span>有效报名人次</span></div><div><strong>{data.teaching_groups}</strong><span>教学组</span></div></div></section><section className="paper-card"><div className="card-title"><h2>教务提醒</h2></div><div className="signal-grid"><div><strong>{data.draft_courses}</strong><span>待完善课程</span></div><div><strong>{data.students_need_pwd}</strong><span>尚未修改初始密码</span></div><div><strong>{data.closed_courses}</strong><span>暂停报名课程</span></div></div></section></div>
+    <div className="dashboard-grid"><section className="paper-card"><div className="card-title"><h2>报名情况</h2></div><div className="signal-grid"><div><strong>{data.open_courses}</strong><span>开放课程</span></div><div><strong>{data.full_courses}</strong><span>已满课程</span></div><div><strong>{data.active_enrollments}</strong><span>有效报名人次</span></div><div><strong>{data.grades}</strong><span>年级</span></div></div></section><section className="paper-card"><div className="card-title"><h2>教务提醒</h2></div><div className="signal-grid"><div><strong>{data.draft_courses}</strong><span>待完善课程</span></div><div><strong>{data.students_need_pwd}</strong><span>尚未修改初始密码</span></div><div><strong>{data.closed_courses}</strong><span>暂停报名课程</span></div></div></section></div>
   </>;
 }
 

@@ -24,7 +24,7 @@ export default function CourseEditor({ api, course, meta, onClose, onSaved, toas
   } : { ...EMPTY_FORM, category_id: meta.categories[0]?.id || '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const scopeOptions = useMemo(() => form.allowed_scope.type === 'grades' ? meta.grades : form.allowed_scope.type === 'classes' ? meta.classes : form.allowed_scope.type === 'groups' ? (meta.teaching_groups || []) : [], [form.allowed_scope.type, meta]);
+  const scopeOptions = useMemo(() => form.allowed_scope.type === 'grades' ? meta.grades : [], [form.allowed_scope.type, meta]);
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const setScopeType = (type) => setForm((current) => ({ ...current, allowed_scope: { type, [type]: [] } }));
@@ -66,7 +66,7 @@ export default function CourseEditor({ api, course, meta, onClose, onSaved, toas
         <label className="span-two"><span>课程介绍</span><textarea rows="3" value={form.description} onChange={update('description')} placeholder="填写课程内容、适合对象和注意事项" /></label>
       </div>
 
-      <section className="editor-section"><div className="section-heading"><div><strong>适用学生范围</strong><span>选择可报名的学生；教学组是预先配置的班级集合。</span></div></div><div className="segmented scope-tabs"><button type="button" className={form.allowed_scope.type === 'all' ? 'active' : ''} onClick={() => setScopeType('all')}>全体学生</button><button type="button" className={form.allowed_scope.type === 'grades' ? 'active' : ''} onClick={() => setScopeType('grades')}>指定年级</button><button type="button" className={form.allowed_scope.type === 'classes' ? 'active' : ''} onClick={() => setScopeType('classes')}>指定班级</button><button type="button" className={form.allowed_scope.type === 'groups' ? 'active' : ''} onClick={() => setScopeType('groups')}>指定教学组</button></div>{form.allowed_scope.type !== 'all' ? <div className="option-grid compact">{scopeOptions.map((item) => { const key = form.allowed_scope.type; return <label className="check-card" key={item.id}><input type="checkbox" checked={(form.allowed_scope[key] || []).includes(item.id)} onChange={() => toggleScope(item.id)} /><span>{item.name}</span></label>; })}</div> : null}</section>
+      <section className="editor-section"><div className="section-heading"><div><strong>适用学生范围</strong><span>选择允许报名的年级，同年级的所有班级均可报名。</span></div></div><div className="segmented scope-tabs"><button type="button" className={form.allowed_scope.type === 'all' ? 'active' : ''} onClick={() => setScopeType('all')}>全体学生</button><button type="button" className={form.allowed_scope.type === 'grades' ? 'active' : ''} onClick={() => setScopeType('grades')}>指定年级</button></div>{form.allowed_scope.type !== 'all' ? <div className="option-grid compact">{scopeOptions.map((item) => { const key = form.allowed_scope.type; return <label className="check-card" key={item.id}><input type="checkbox" checked={(form.allowed_scope[key] || []).includes(item.id)} onChange={() => toggleScope(item.id)} /><span>{item.name}</span></label>; })}</div> : null}</section>
       {error ? <div className="form-error course-save-error">{error}</div> : null}
       <footer><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button editor-save" disabled={saving}>{saving ? '正在保存…' : '保存课程'}</button></footer>
     </form>

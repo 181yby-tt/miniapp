@@ -7,9 +7,9 @@ function enrollmentFixture() {
   users.push({ id: 1000, username: 'test-teacher', password_hash: passwordHash, user_type: 'SUPER_ADMIN', status: 'ACTIVE', must_change_password: false });
   const db = {
     users,
-    students: users.filter((u) => u.user_type === 'STUDENT').map((u) => ({ id: u.id, user_id: u.id, student_no: `00${u.id}`, name: `测试学生${u.id}`, grade_id: 1, class_id: u.id === 64 ? 4 : (u.id % 3) + 1, status: 'ACTIVE' })),
-    grades: [{ id: 1, name: '初一', status: 'ACTIVE' }],
-    classes: [1, 2, 3, 4].map((id) => ({ id, grade_id: 1, name: `${id}班`, status: 'ACTIVE' })),
+    students: users.filter((u) => u.user_type === 'STUDENT').map((u) => ({ id: u.id, user_id: u.id, student_no: `00${u.id}`, name: `测试学生${u.id}`, grade_id: u.id === 64 ? 2 : 1, class_id: u.id === 64 ? 4 : (u.id % 3) + 1, status: 'ACTIVE' })),
+    grades: [{ id: 1, name: '初一', status: 'ACTIVE' }, { id: 2, name: '初二', status: 'ACTIVE' }],
+    classes: [1, 2, 3, 4].map((id) => ({ id, grade_id: id === 4 ? 2 : 1, name: `${id}班`, status: 'ACTIVE' })),
     courses: [1, 2, 3, 4, 5, 6].map((id) => ({ id, name: `测试课程${id}`, category_id: 1, capacity: 20, active_count: 0, status: 'OPEN', version: 1, allowed_scope_json: '{"type":"all"}', enroll_start_at: id === 5 ? '2099-01-01T00:00:00.000Z' : null, enroll_end_at: id === 6 ? '2020-01-01T00:00:00.000Z' : null })),
     course_categories: [{ id: 1, name: '体育', status: 'ACTIVE' }],
     course_staff: [1, 2, 3, 4, 5, 6].map((id) => ({ course_id: id, staff_id: id, role: 'TEACHER' })),

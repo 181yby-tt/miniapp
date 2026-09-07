@@ -5,7 +5,6 @@ import { LoginPage, ChangePasswordPage } from './pages/AuthPages.jsx';
 import { CoursesPage, CourseDetailPage, EnrollmentsPage, ProfilePage } from './pages/StudentPages.jsx';
 import { AdminAccountsPage, AdminCoursesPage, AdminDashboardPage, AdminEnrollmentsPage, AdminResourcesPage, AdminSettingsPage } from './pages/AdminPages.jsx';
 import AdminStudentsPage from './pages/AdminStudentsPage.jsx';
-import AdminEnrollmentGroupsPage from './pages/AdminEnrollmentGroupsPage.jsx';
 import { navigate, usePathname } from './runtime/browser.js';
 
 const sessionStore = createSessionStore(window.localStorage);
@@ -66,7 +65,6 @@ export default function App() {
     else if (pathname === '/admin/resources') page = <AdminResourcesPage api={api} toast={toast} />;
     else if (pathname === '/admin/settings') page = <AdminSettingsPage api={api} toast={toast} />;
     else if (pathname === '/admin/accounts') page = <AdminAccountsPage api={api} toast={toast} />;
-    else if (pathname === '/admin/groups') page = <AdminEnrollmentGroupsPage api={api} toast={toast} />;
     else if (pathname === '/admin/enrollments') page = <AdminEnrollmentsPage api={api} toast={toast} />;
     else page = <AdminDashboardPage api={api} />;
   } else {
